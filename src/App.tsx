@@ -1,7 +1,7 @@
-// Phase 1 placeholder shell only. No layout, panels, Canvas, or interaction
-// belongs here yet — see phases/PHASE_2_CANVAS.md for what replaces this.
+import { AppShell } from "./components/layout/AppShell";
+
 function App() {
-  return <div>Algorithm Playground</div>;
+  return <AppShell />;
 }
 
 export default App;

@@ -1,0 +1,26 @@
+/* Minimal global reset. Not in PHASE_2_CANVAS.md's file list, but the
+   AppShell's flex/100vh layout depends on box-sizing:border-box and a
+   zeroed body margin to behave predictably — without this, default
+   body margin alone breaks the 100vh/100vw math. Kept intentionally tiny;
+   real visual polish is Phase 8's job. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overscroll-behavior: none;
+}
+
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+button {
+  font-family: inherit;
+}
