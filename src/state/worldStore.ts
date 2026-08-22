@@ -19,6 +19,26 @@ const DEFAULT_DENSITY = 0.22;
 
 export type Tool = { kind: "paint"; terrain: TerrainType } | { kind: "move-start" } | { kind: "move-goal" };
 
+/**
+ * Describes what changed on a given store update, so subscribers that care
+ * about visual cost (the renderer) can redraw only what's necessary instead
+ * of the whole grid on every edit. This was added after real-browser
+ * testing showed the original "just notify, always full-redraw" design was
+ * unusably slow while drag-painting (~10,000-cell redraw per pointermove-
+ * driven frame on the default 100x100 grid) — not a premature optimization,
+ * a fix for a genuine correctness/usability bug found in manual testing.
+ *   - "cells": only these specific cells' visuals need to be repainted
+ *     (terrain edits, or start/goal moving — the old AND new cell both need
+ *     repainting so the marker visually moves).
+ *   - "full": the whole grid was replaced (Generate, Clear) — a full redraw
+ *     is unavoidable and appropriate here, this doesn't happen during
+ *     rapid interaction.
+ *   - "none": state changed but nothing visual needs to be redrawn (e.g.
+ *     the active tool) — still notifies React (for cursor styling etc.) but
+ *     the renderer does nothing with it.
+ */
+export type WorldChange = { kind: "cells"; ids: NodeId[] } | { kind: "full" } | { kind: "none" };
+
 export interface WorldState {
   grid: Grid;
   start: NodeId;
@@ -126,12 +146,12 @@ function createWorldStore() {
     activeTool: { kind: "paint", terrain: TerrainType.Wall },
   };
 
-  const listeners = new Set<() => void>();
-  const notify = () => listeners.forEach((l) => l());
+  const listeners = new Set<(change: WorldChange) => void>();
+  const notify = (change: WorldChange) => listeners.forEach((l) => l(change));
 
-  function setState(next: WorldState): void {
+  function setState(next: WorldState, change: WorldChange): void {
     state = next;
-    notify();
+    notify(change);
   }
 
   return {
@@ -139,13 +159,13 @@ function createWorldStore() {
       return state;
     },
 
-    subscribe(listener: () => void): () => void {
+    subscribe(listener: (change: WorldChange) => void): () => void {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
 
     setActiveTool(tool: Tool): void {
-      setState({ ...state, activeTool: tool });
+      setState({ ...state, activeTool: tool }, { kind: "none" });
     },
 
     /** Paints a single cell. No-op if the cell already has that terrain (avoids redundant notifications). */
@@ -155,22 +175,22 @@ function createWorldStore() {
       // AlgorithmResult snapshots need immutability, per ARCHITECTURE.md
       // §4); we still swap the state object so subscribers are notified.
       state.grid.setTerrain(id, terrain);
-      setState({ ...state });
+      setState({ ...state }, { kind: "cells", ids: [id] });
     },
 
     /** Paints every cell along the line between two cells, for continuous drag-painting. */
     paintLine(fromRow: number, fromCol: number, toRow: number, toCol: number, terrain: TerrainType): void {
       const cells = lineCells(fromRow, fromCol, toRow, toCol);
-      let changed = false;
+      const changedIds: NodeId[] = [];
       for (const { row, col } of cells) {
         if (!state.grid.inBounds(row, col)) continue;
         const id = state.grid.idOf(row, col);
         if (state.grid.terrainAt(id) !== terrain) {
           state.grid.setTerrain(id, terrain);
-          changed = true;
+          changedIds.push(id);
         }
       }
-      if (changed) setState({ ...state });
+      if (changedIds.length > 0) setState({ ...state }, { kind: "cells", ids: changedIds });
     },
 
     /**
@@ -181,13 +201,15 @@ function createWorldStore() {
      */
     moveStart(id: NodeId): boolean {
       if (!state.grid.isPassable(id)) return false;
-      setState({ ...state, start: id });
+      const previous = state.start;
+      setState({ ...state, start: id }, { kind: "cells", ids: [previous, id] });
       return true;
     },
 
     moveGoal(id: NodeId): boolean {
       if (!state.grid.isPassable(id)) return false;
-      setState({ ...state, goal: id });
+      const previous = state.goal;
+      setState({ ...state, goal: id }, { kind: "cells", ids: [previous, id] });
       return true;
     },
 
@@ -200,13 +222,13 @@ function createWorldStore() {
       const grid = generateRandomObstacles(seed, state.grid.width, state.grid.height, density);
       const start = findNearestPassable(grid, state.start);
       const goal = findNearestPassable(grid, state.goal);
-      setState({ ...state, grid, start, goal, seed });
+      setState({ ...state, grid, start, goal, seed }, { kind: "full" });
     },
 
     /** Resets to an all-Road grid of the same dimensions. */
     clear(): void {
       const grid = new Grid(state.grid.width, state.grid.height, TerrainType.Road);
-      setState({ ...state, grid });
+      setState({ ...state, grid }, { kind: "full" });
     },
   };
 }

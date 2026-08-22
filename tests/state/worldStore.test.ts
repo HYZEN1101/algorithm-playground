@@ -221,6 +221,90 @@ describe("lineCells", () => {
   });
 });
 
+describe("worldStore change notifications (drives partial vs full canvas redraws)", () => {
+  beforeEach(() => {
+    resetToAllRoad();
+  });
+
+  function captureChanges(fn: () => void) {
+    const changes: unknown[] = [];
+    const unsubscribe = worldStore.subscribe((change) => changes.push(change));
+    fn();
+    unsubscribe();
+    return changes;
+  }
+
+  it("setActiveTool notifies with kind='none' (no canvas redraw needed)", () => {
+    const changes = captureChanges(() => worldStore.setActiveTool({ kind: "move-start" }));
+    expect(changes).toEqual([{ kind: "none" }]);
+  });
+
+  it("paintCell notifies with kind='cells' containing exactly the painted id", () => {
+    const id = worldStore.getState().grid.idOf(4, 4);
+    const changes = captureChanges(() => worldStore.paintCell(id, TerrainType.Wall));
+    expect(changes).toEqual([{ kind: "cells", ids: [id] }]);
+  });
+
+  it("paintCell emits no notification at all when the terrain is unchanged", () => {
+    const id = worldStore.getState().grid.idOf(4, 4); // already Road after clear()
+    const changes = captureChanges(() => worldStore.paintCell(id, TerrainType.Road));
+    expect(changes).toEqual([]);
+  });
+
+  it("paintLine notifies with kind='cells' containing exactly the changed ids (not the whole grid)", () => {
+    const { grid } = worldStore.getState();
+    const changes = captureChanges(() => worldStore.paintLine(0, 0, 0, 4, TerrainType.Wall));
+    expect(changes.length).toBe(1);
+    const change = changes[0] as { kind: string; ids: number[] };
+    expect(change.kind).toBe("cells");
+    const expectedIds = [0, 1, 2, 3, 4].map((col) => grid.idOf(0, col));
+    expect([...change.ids].sort((a, b) => a - b)).toEqual(expectedIds.sort((a, b) => a - b));
+  });
+
+  it("moveStart notifies with kind='cells' containing both the old and new position", () => {
+    const before = worldStore.getState();
+    const target = before.grid.idOf(15, 15);
+    const changes = captureChanges(() => worldStore.moveStart(target));
+    expect(changes).toEqual([{ kind: "cells", ids: [before.start, target] }]);
+  });
+
+  it("moveGoal notifies with kind='cells' containing both the old and new position", () => {
+    const before = worldStore.getState();
+    const target = before.grid.idOf(16, 16);
+    const changes = captureChanges(() => worldStore.moveGoal(target));
+    expect(changes).toEqual([{ kind: "cells", ids: [before.goal, target] }]);
+  });
+
+  it("refused moveStart (onto a wall) emits no notification", () => {
+    const wallId = worldStore.getState().grid.idOf(7, 7);
+    worldStore.paintCell(wallId, TerrainType.Wall);
+    const changes = captureChanges(() => worldStore.moveStart(wallId));
+    expect(changes).toEqual([]);
+  });
+
+  it("generateRandom notifies with kind='full'", () => {
+    const changes = captureChanges(() => worldStore.generateRandom(123, 0.2));
+    expect(changes).toEqual([{ kind: "full" }]);
+  });
+
+  it("clear notifies with kind='full'", () => {
+    const changes = captureChanges(() => worldStore.clear());
+    expect(changes).toEqual([{ kind: "full" }]);
+  });
+
+  it("dragging a line of 50 cells notifies with a single batched 'cells' change, not 50 separate notifications", () => {
+    // This is the actual performance property that mattered: one drag
+    // gesture spanning many cells must produce ONE notification with all
+    // the ids, not one notification per cell — otherwise the renderer
+    // would still end up doing many separate (even if individually cheap)
+    // redraw passes.
+    const changes = captureChanges(() => worldStore.paintLine(0, 0, 0, 49, TerrainType.Wall));
+    expect(changes.length).toBe(1);
+    const change = changes[0] as { kind: string; ids: number[] };
+    expect(change.ids.length).toBe(50);
+  });
+});
+
 // Sanity check that Grid itself is usable here without any Phase 2 wrapper
 // (documents that worldStore's core has no hidden dependency on anything
 // beyond Phase 1's Grid).

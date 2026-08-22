@@ -28,8 +28,8 @@ export function CanvasGrid() {
     const renderer = createRenderer(canvas, worldStore);
     rendererRef.current = renderer;
 
-    const unsubscribe = worldStore.subscribe(() => {
-      renderer.requestRedraw();
+    const unsubscribe = worldStore.subscribe((change) => {
+      renderer.requestRedraw(change);
     });
 
     return () => {

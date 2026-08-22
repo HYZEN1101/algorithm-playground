@@ -24,10 +24,12 @@ const MIN_CELL_SIZE_FOR_TERRAIN_PATTERN = 10;
 
 /**
  * Draws the full static layer (background, every cell's terrain + pattern,
- * grid lines, start/goal icons) onto the given context. Called only when
- * the world actually changes (renderer.ts gates this behind a dirty flag) —
- * never once per animation frame. See ARCHITECTURE.md §8 and
- * PHASE_2_CANVAS.md's redraw-counter acceptance criterion.
+ * grid lines, start/goal icons) onto the given context. This is the
+ * expensive path — only call it for whole-grid replacements (initial load,
+ * Generate, Clear, canvas resize). Interactive edits (painting, dragging
+ * start/goal) should go through drawCells() instead, which only touches the
+ * cells that actually changed. See renderer.ts's dirty-tracking for how the
+ * two paths are chosen.
  */
 export function drawStaticLayer(
   ctx: CanvasRenderingContext2D,
@@ -50,8 +52,30 @@ export function drawStaticLayer(
   }
 
   drawGridLines(ctx, metrics);
-  drawMarker(ctx, start, grid, metrics, START_COLOR, "start");
-  drawMarker(ctx, goal, grid, metrics, GOAL_COLOR, "goal");
+  drawMarkers(ctx, grid, metrics, start, goal);
+}
+
+/**
+ * Redraws ONLY the given cells (fill + pattern + a local border touch-up),
+ * then redraws the start/goal markers on top. This is the cheap path used
+ * for interactive edits — painting a handful of cells during a drag should
+ * cost O(cells touched), not O(grid size). Markers are always redrawn here
+ * (trivial cost — two shapes) since an edited cell might sit under one.
+ */
+export function drawCells(
+  ctx: CanvasRenderingContext2D,
+  grid: Grid,
+  ids: Iterable<NodeId>,
+  metrics: CellMetrics,
+  start: NodeId,
+  goal: NodeId,
+): void {
+  for (const id of ids) {
+    const { row, col } = grid.coordOf(id);
+    drawCell(ctx, grid, id, row, col, metrics);
+    drawCellBorder(ctx, row, col, metrics);
+  }
+  drawMarkers(ctx, grid, metrics, start, goal);
 }
 
 function drawCell(
@@ -185,6 +209,34 @@ function drawGridLines(ctx: CanvasRenderingContext2D, metrics: CellMetrics): voi
   }
   ctx.stroke();
   ctx.restore();
+}
+
+/**
+ * A cell's own fillRect overwrites its top/left border pixel (shared with
+ * the grid-line pass), since fillRect(x,y,...) paints starting exactly at
+ * the line's coordinate. Only used by the partial-redraw path (drawCells) —
+ * the full layer draws all grid lines in one batched pass instead, which
+ * doesn't have this seam issue since it runs after every cell is filled.
+ */
+function drawCellBorder(ctx: CanvasRenderingContext2D, row: number, col: number, metrics: CellMetrics): void {
+  if (metrics.cellSize < 4) return; // matches drawGridLines' own skip threshold
+  const { x, y } = gridToPixel(row, col, metrics);
+  ctx.save();
+  ctx.strokeStyle = GRID_LINE_COLOR;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, y + 0.5, metrics.cellSize - 1, metrics.cellSize - 1);
+  ctx.restore();
+}
+
+function drawMarkers(
+  ctx: CanvasRenderingContext2D,
+  grid: Grid,
+  metrics: CellMetrics,
+  start: NodeId,
+  goal: NodeId,
+): void {
+  drawMarker(ctx, start, grid, metrics, START_COLOR, "start");
+  drawMarker(ctx, goal, grid, metrics, GOAL_COLOR, "goal");
 }
 
 /**
