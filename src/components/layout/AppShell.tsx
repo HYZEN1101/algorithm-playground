@@ -1,6 +1,7 @@
 import { CanvasGrid } from "../grid/CanvasGrid";
 import { TerrainPicker } from "../controls/TerrainPicker";
 import { GenerateButton } from "../controls/GenerateButton";
+import { AlgorithmPicker } from "../controls/AlgorithmPicker";
 
 /**
  * Conceptual 3-panel layout from ARCHITECTURE.md §9: left = algorithm/
@@ -31,7 +32,7 @@ export function AppShell() {
         }}
       >
         <strong style={{ fontSize: 15 }}>Algorithm Playground</strong>
-        <span style={{ fontSize: 12, color: "#888" }}>Phase 2 — grid interaction</span>
+        <span style={{ fontSize: 12, color: "#888" }}>Phase 3 — BFS + DFS engine</span>
       </header>
 
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
@@ -47,6 +48,8 @@ export function AppShell() {
           <TerrainPicker />
           <div style={{ height: 20 }} />
           <GenerateButton />
+          <div style={{ height: 20 }} />
+          <AlgorithmPicker />
         </aside>
 
         <main style={{ flex: 1, minWidth: 0, padding: 16 }}>

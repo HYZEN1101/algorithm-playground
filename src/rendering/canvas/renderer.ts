@@ -1,7 +1,9 @@
 import type { Grid } from "../../world/grid";
 import type { NodeId } from "../../types/shared";
+import type { NodeState } from "../../algorithms/pathfinding/types";
 import { computeCellMetrics, configureCanvasBackingStore, type CellMetrics } from "../coordinates";
 import { drawStaticLayer, drawCells } from "./gridRenderer";
+import { drawPathOverlay } from "./pathRenderer";
 
 export interface RendererWorldSource {
   getState(): { grid: Grid; start: NodeId; goal: NodeId };
@@ -26,6 +28,19 @@ export interface RendererHandle {
   destroy(): void;
   /** Current metrics, for interaction code that needs to hit-test. Null before first size update. */
   getMetrics(): CellMetrics | null;
+  /**
+   * ================================ TEMPORARY (Phase 3) ================================
+   * Sets the algorithm result to display as a static, all-at-once overlay
+   * (visited cells + final path), or null to clear it. There is no index,
+   * no play/pause/step — the whole result appears at once, per
+   * PHASE_3_BFS_DFS.md's explicit non-goal ("not animated — that's Phase
+   * 5"). Phase 5 removes this method entirely and replaces it with
+   * playback-index-driven rendering wired through the real
+   * PlaybackController; see pathRenderer.ts's file-level comment for what
+   * carries over vs. what Phase 5 needs to rebuild.
+   * =======================================================================================
+   */
+  setAlgorithmResult(finalNodeState: Map<NodeId, NodeState> | null): void;
 }
 
 // Gated behind import.meta.env.DEV per PHASE_2_CANVAS.md's acceptance
@@ -52,11 +67,23 @@ export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSo
     throw new Error("Failed to acquire 2D rendering context for the grid canvas");
   }
 
-  // Offscreen buffer holding the static layer, regenerated only when dirty.
+  // Offscreen buffer holding the static WORLD layer (terrain/walls/start/
+  // goal), regenerated only when dirty.
   const offscreen = document.createElement("canvas");
   const offscreenCtx = offscreen.getContext("2d");
   if (!offscreenCtx) {
     throw new Error("Failed to acquire 2D rendering context for the offscreen buffer");
+  }
+
+  // Separate offscreen buffer for the TEMPORARY algorithm-result overlay
+  // (Phase 3). Kept as its own cached layer — not baked into the world
+  // layer above — so world edits and algorithm runs redraw independently,
+  // and so Phase 5 can swap out how this specific layer gets populated
+  // without touching gridRenderer.ts at all.
+  const algorithmOffscreen = document.createElement("canvas");
+  const algorithmOffscreenCtx = algorithmOffscreen.getContext("2d");
+  if (!algorithmOffscreenCtx) {
+    throw new Error("Failed to acquire 2D rendering context for the algorithm overlay buffer");
   }
 
   let metrics: CellMetrics | null = null;
@@ -65,6 +92,8 @@ export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSo
   // A "full" pending redraw absorbs any subsequently-requested cell ids —
   // no need to track both.
   let pending: "full" | Set<NodeId> | null = "full"; // draw once on first frame
+  let currentNodeState: Map<NodeId, NodeState> | null = null;
+  let algorithmPending = true; // draw once on first frame (clears the overlay to empty)
   let rafHandle: number | null = null;
   let destroyed = false;
 
@@ -88,6 +117,12 @@ export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSo
     touchStaticLayer();
   }
 
+  function drawAlgorithmOverlay(): void {
+    if (!metrics) return;
+    const { grid } = world.getState();
+    drawPathOverlay(algorithmOffscreenCtx!, grid, metrics, currentNodeState);
+  }
+
   function frame(): void {
     if (destroyed) return;
 
@@ -99,21 +134,27 @@ export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSo
       pending = null;
     }
 
-    // Blit the cached static layer onto the visible canvas. Both canvases
-    // share IDENTICAL backing-store pixel dimensions (both sized via
-    // configureCanvasBackingStore with the same cssWidth/cssHeight/dpr in
-    // updateSize below), so this must be a plain 1:1 physical-pixel copy —
-    // no transform/scale here. (Previously this ran under a dpr-scaled
-    // ctx transform, which double-applied the dpr scale on top of the
-    // offscreen buffer's own already-dpr-scaled pixel size, rendering
-    // everything dpr² too large and misaligned with pointer hit-testing —
-    // that was the "walls never line up with the cursor" bug found in
-    // manual testing on a scaled display. Fixed by resetting to identity
-    // before the blit.)
+    if (algorithmPending) {
+      drawAlgorithmOverlay();
+      algorithmPending = false;
+    }
+
+    // Blit both cached layers onto the visible canvas. Both offscreen
+    // buffers share IDENTICAL backing-store pixel dimensions to the visible
+    // canvas (all three sized via configureCanvasBackingStore with the same
+    // cssWidth/cssHeight/dpr in updateSize below), so this must be a plain
+    // 1:1 physical-pixel copy — no transform/scale here. (Previously this
+    // ran under a dpr-scaled ctx transform, which double-applied the dpr
+    // scale on top of the offscreen buffer's own already-dpr-scaled pixel
+    // size, rendering everything dpr² too large and misaligned with
+    // pointer hit-testing — that was the "walls never line up with the
+    // cursor" bug found in manual testing on a scaled display. Fixed by
+    // resetting to identity before the blit.)
     ctx!.setTransform(1, 0, 0, 1, 0, 0);
     ctx!.clearRect(0, 0, canvas.width, canvas.height);
     if (metrics) {
       ctx!.drawImage(offscreen, 0, 0);
+      ctx!.drawImage(algorithmOffscreen, 0, 0); // overlay on top of terrain/walls
     }
 
     rafHandle = requestAnimationFrame(frame);
@@ -139,13 +180,16 @@ export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSo
       dpr = nextDpr;
       configureCanvasBackingStore(canvas, cssWidth, cssHeight, dpr);
       configureCanvasBackingStore(offscreen, cssWidth, cssHeight, dpr);
-      // The OFFSCREEN buffer's context does need the dpr-scaled transform:
-      // drawStaticLayer/drawCells draw in CSS-pixel-space coordinates, and
-      // this transform is what maps those onto the offscreen canvas's
-      // larger (dpr-scaled) physical pixel buffer. This is unrelated to —
-      // and unaffected by — the blit fix above, which is about how that
-      // already-correct offscreen buffer gets copied onto the visible one.
+      configureCanvasBackingStore(algorithmOffscreen, cssWidth, cssHeight, dpr);
+      // The OFFSCREEN buffers' contexts do need the dpr-scaled transform:
+      // drawStaticLayer/drawCells/drawPathOverlay all draw in CSS-pixel-
+      // space coordinates, and this transform is what maps those onto each
+      // offscreen canvas's larger (dpr-scaled) physical pixel buffer. This
+      // is unrelated to — and unaffected by — the blit fix above, which is
+      // about how those already-correct offscreen buffers get copied onto
+      // the visible one.
       offscreenCtx!.setTransform(dpr, 0, 0, dpr, 0, 0);
+      algorithmOffscreenCtx!.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       const { grid } = world.getState();
       metrics = computeCellMetrics({
@@ -155,6 +199,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSo
         canvasHeight: cssHeight,
       });
       pending = "full";
+      algorithmPending = true;
     },
 
     destroy(): void {
@@ -164,6 +209,11 @@ export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSo
 
     getMetrics(): CellMetrics | null {
       return metrics;
+    },
+
+    setAlgorithmResult(finalNodeState: Map<NodeId, NodeState> | null): void {
+      currentNodeState = finalNodeState;
+      algorithmPending = true;
     },
   };
 }
