@@ -1,35 +1,7 @@
 import type { NodeId } from "../../types/shared";
 import { neighborsOf } from "../shared/neighbors";
+import { reconstructPath, computePathMetrics } from "../shared/pathReconstruction";
 import type { AlgorithmEvent, NodeState, PathfindingInput, PathfindingResult } from "./types";
-
-// Same pathLength/pathCost convention as bfs.ts: pathLength counts STEPS
-// (edges), not raw cell count — see bfs.ts's doc comment for the full
-// reasoning (resolves a conflict between ARCHITECTURE.md §5's general
-// comment and this phase's explicit start==goal test requirement).
-function computePathMetrics(
-  path: NodeId[],
-  costOf: (id: NodeId) => number,
-): { pathLength: number; pathCost: number } {
-  const pathLength = Math.max(0, path.length - 1);
-  let pathCost = 0;
-  for (let i = 1; i < path.length; i++) {
-    pathCost += costOf(path[i]);
-  }
-  return { pathLength, pathCost };
-}
-
-function reconstructPath(parent: Map<NodeId, NodeId>, start: NodeId, goal: NodeId): NodeId[] {
-  const path: NodeId[] = [goal];
-  let current = goal;
-  while (current !== start) {
-    const prev = parent.get(current);
-    if (prev === undefined) break; // defensive; shouldn't happen when goal was actually found
-    path.push(prev);
-    current = prev;
-  }
-  path.reverse();
-  return path;
-}
 
 /**
  * Depth-first search on the grid. Finds *a* valid path, never claimed or

@@ -2,12 +2,11 @@ import { useSyncExternalStore } from "react";
 import type { PathfindingResult } from "../algorithms/pathfinding/types";
 
 /**
- * Phase 3 only implements BFS and DFS — deliberately not extending this to
- * "dijkstra" | "astar" yet, even though Phase 4 will need to. Guessing at
- * the exact shape Phase 4 wants isn't this phase's job; Phase 4 extends
- * this type itself when it adds those algorithms.
+ * Extended in Phase 4 to include "dijkstra" | "astar" — Phase 3 originally
+ * left this as "bfs" | "dfs" only, deliberately not guessing at the shape
+ * Phase 4 would want.
  */
-export type AlgorithmName = "bfs" | "dfs";
+export type AlgorithmName = "bfs" | "dfs" | "dijkstra" | "astar";
 
 export interface RunState {
   /** The currently selected algorithm in the temporary AlgorithmPicker UI. */
