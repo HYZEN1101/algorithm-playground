@@ -65,6 +65,12 @@ export function bfs(input: PathfindingInput): PathfindingResult {
   let queueHead = 0; // index-based dequeue avoids O(n) Array.shift() cost on large grids
 
   events.push({ type: "ADD_TO_FRONTIER", nodeId: start });
+  // Emit the start node's own distance=0 explicitly (mirrors astar.ts's
+  // UPDATE_SCORES-for-start behavior). Without this, deriveNodeStates
+  // (Phase 5) would show the start node's distance as undefined at any
+  // playback index before the algorithm's own VISIT_NODE event for it,
+  // even though distance=0 is known from the very first instant.
+  events.push({ type: "UPDATE_DISTANCE", nodeId: start, distance: 0 });
   finalNodeState.set(start, { status: "frontier", distance: 0 });
 
   let found = false;

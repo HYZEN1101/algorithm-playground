@@ -2,12 +2,13 @@ import { CanvasGrid } from "../grid/CanvasGrid";
 import { TerrainPicker } from "../controls/TerrainPicker";
 import { GenerateButton } from "../controls/GenerateButton";
 import { AlgorithmPicker } from "../controls/AlgorithmPicker";
+import { PlaybackControls } from "../controls/PlaybackControls";
 
 /**
  * Conceptual 3-panel layout from ARCHITECTURE.md §9: left = algorithm/
- * settings panel, center = CanvasGrid, right = NodeInspector. The right
- * panel and any bottom bar (playback controls, metrics) are placeholders
- * until their respective phases (Inspector: Phase 6, Playback: Phase 5).
+ * settings panel, center = CanvasGrid, right = NodeInspector. Bottom bar
+ * now hosts the real PlaybackControls (Phase 5). The right panel
+ * (Inspector) and a Metrics panel are still placeholders until Phase 6.
  */
 export function AppShell() {
   return (
@@ -32,7 +33,7 @@ export function AppShell() {
         }}
       >
         <strong style={{ fontSize: 15 }}>Algorithm Playground</strong>
-        <span style={{ fontSize: 12, color: "#888" }}>Phase 3 — BFS + DFS engine</span>
+        <span style={{ fontSize: 12, color: "#888" }}>Phase 5 — Playback Controller</span>
       </header>
 
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
@@ -68,6 +69,10 @@ export function AppShell() {
         >
           Inspector — coming in a later phase.
         </aside>
+      </div>
+
+      <div style={{ borderTop: "1px solid #e2ddd2", flexShrink: 0 }}>
+        <PlaybackControls />
       </div>
     </div>
   );

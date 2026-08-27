@@ -1,9 +1,10 @@
 import type { Grid } from "../../world/grid";
 import type { NodeId } from "../../types/shared";
-import type { NodeState } from "../../algorithms/pathfinding/types";
+import type { AlgorithmEvent, NodeState } from "../../algorithms/pathfinding/types";
 import { computeCellMetrics, configureCanvasBackingStore, type CellMetrics } from "../coordinates";
 import { drawStaticLayer, drawCells } from "./gridRenderer";
 import { drawPathOverlay } from "./pathRenderer";
+import { deriveNodeStates, findCurrentNode } from "../../playback/deriveNodeStates";
 
 export interface RendererWorldSource {
   getState(): { grid: Grid; start: NodeId; goal: NodeId };
@@ -29,18 +30,16 @@ export interface RendererHandle {
   /** Current metrics, for interaction code that needs to hit-test. Null before first size update. */
   getMetrics(): CellMetrics | null;
   /**
-   * ================================ TEMPORARY (Phase 3) ================================
-   * Sets the algorithm result to display as a static, all-at-once overlay
-   * (visited cells + final path), or null to clear it. There is no index,
-   * no play/pause/step — the whole result appears at once, per
-   * PHASE_3_BFS_DFS.md's explicit non-goal ("not animated — that's Phase
-   * 5"). Phase 5 removes this method entirely and replaces it with
-   * playback-index-driven rendering wired through the real
-   * PlaybackController; see pathRenderer.ts's file-level comment for what
-   * carries over vs. what Phase 5 needs to rebuild.
-   * =======================================================================================
+   * Real playback-index-driven rendering (Phase 5). Replaces Phase 3/4's
+   * `setAlgorithmResult(finalNodeState)`, which showed one static
+   * snapshot with no index. Call this every time the PlaybackController
+   * notifies (every rAF tick while playing, plus every step/seek/reset) —
+   * the renderer derives the visible NodeState map via
+   * `deriveNodeStates(events, index)` and marks the overlay dirty for the
+   * next frame. Pass `null` to clear the overlay entirely (e.g. no
+   * algorithm has been run yet).
    */
-  setAlgorithmResult(finalNodeState: Map<NodeId, NodeState> | null): void;
+  setPlaybackFrame(events: AlgorithmEvent[] | null, index: number): void;
 }
 
 // Gated behind import.meta.env.DEV per PHASE_2_CANVAS.md's acceptance
@@ -93,6 +92,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSo
   // no need to track both.
   let pending: "full" | Set<NodeId> | null = "full"; // draw once on first frame
   let currentNodeState: Map<NodeId, NodeState> | null = null;
+  let currentNodeId: NodeId | null = null;
   let algorithmPending = true; // draw once on first frame (clears the overlay to empty)
   let rafHandle: number | null = null;
   let destroyed = false;
@@ -120,7 +120,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSo
   function drawAlgorithmOverlay(): void {
     if (!metrics) return;
     const { grid } = world.getState();
-    drawPathOverlay(algorithmOffscreenCtx!, grid, metrics, currentNodeState);
+    drawPathOverlay(algorithmOffscreenCtx!, grid, metrics, currentNodeState, currentNodeId);
   }
 
   function frame(): void {
@@ -211,8 +211,14 @@ export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSo
       return metrics;
     },
 
-    setAlgorithmResult(finalNodeState: Map<NodeId, NodeState> | null): void {
-      currentNodeState = finalNodeState;
+    setPlaybackFrame(events: AlgorithmEvent[] | null, index: number): void {
+      if (!events || events.length === 0) {
+        currentNodeState = null;
+        currentNodeId = null;
+      } else {
+        currentNodeState = deriveNodeStates(events, index);
+        currentNodeId = findCurrentNode(events, index);
+      }
       algorithmPending = true;
     },
   };

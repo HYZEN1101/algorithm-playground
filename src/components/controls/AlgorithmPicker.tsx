@@ -1,5 +1,6 @@
 import { useWorldState } from "../../state/worldStore";
 import { runStore, useRunState, type AlgorithmName } from "../../state/runStore";
+import { playbackController } from "../../state/playbackStore";
 import { bfs } from "../../algorithms/pathfinding/bfs";
 import { dfs } from "../../algorithms/pathfinding/dfs";
 import { dijkstra } from "../../algorithms/pathfinding/dijkstra";
@@ -7,19 +8,18 @@ import { astar } from "../../algorithms/pathfinding/astar";
 import type { PathfindingAlgorithm } from "../../algorithms/pathfinding/types";
 
 /**
- * ================================ TEMPORARY (Phase 3/4) ================================
- * This exists purely to validate the algorithm engine end-to-end before
- * Phase 5 builds the real playback system. "Run" here means "execute the
- * algorithm synchronously and show its final state" — no play/pause/step,
- * no speed control, no animation. PHASE_5_PLAYBACK.md supersedes this
- * component with real PlaybackControls; when that happens, "Run" there
- * means "load events into PlaybackController and play" instead.
+ * "Run" now means what PHASE_5_PLAYBACK.md specifies: execute the selected
+ * algorithm synchronously (still fast — a few hundred ms even at 200x200,
+ * per Phase 4's manual check), record the result in runStore (still used
+ * by the results summary text below and, later, Phase 6's Metrics panel),
+ * then load the result's events into the real PlaybackController and
+ * start playing from index 0. Play/Pause/Step/Reset/Speed now live in
+ * PlaybackControls, not here.
  *
  * No heuristic selector for A* — per the movement/heuristic scope
  * amendment, Manhattan is the ONLY exposed heuristic in the MVP, so there
  * is no choice to present (not "Manhattan as the default among options").
  * A dropdown with exactly one option would be dead UI.
- * ============================================================================================
  */
 
 const ALGORITHMS: Record<AlgorithmName, { label: string; run: PathfindingAlgorithm }> = {
@@ -39,12 +39,14 @@ export function AlgorithmPicker() {
     const { run } = ALGORITHMS[selectedAlgorithm];
     const result = run({ grid, start, goal, diagonals: false });
     runStore.setResult(selectedAlgorithm, result);
+    playbackController.load(result.events);
+    playbackController.play();
   };
 
   return (
     <div>
       <h2 style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.06em", color: "#666", margin: "0 0 8px" }}>
-        Algorithm (temporary — Phase 5 replaces this)
+        Algorithm
       </h2>
 
       {(Object.keys(ALGORITHMS) as AlgorithmName[]).map((name) => {

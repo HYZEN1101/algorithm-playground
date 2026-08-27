@@ -70,6 +70,10 @@ export function dijkstra(input: PathfindingInput): PathfindingResult {
   const pq = new PriorityQueue<NodeId>();
   pq.push(start, 0);
   events.push({ type: "ADD_TO_FRONTIER", nodeId: start });
+  // Emit the start node's own distance=0 explicitly (mirrors astar.ts's
+  // UPDATE_SCORES-for-start behavior) so deriveNodeStates (Phase 5) never
+  // shows an undefined distance for the start node at any playback index.
+  events.push({ type: "UPDATE_DISTANCE", nodeId: start, distance: 0 });
   finalNodeState.set(start, { status: "frontier", distance: 0 });
 
   let found = false;

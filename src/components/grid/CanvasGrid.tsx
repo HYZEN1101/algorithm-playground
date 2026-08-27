@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { createRenderer, type RendererHandle } from "../../rendering/canvas/renderer";
 import { worldStore, useWorldState } from "../../state/worldStore";
-import { runStore } from "../../state/runStore";
+import { playbackController } from "../../state/playbackStore";
 import { useGridInteraction } from "./useGridInteraction";
 
 /**
@@ -33,22 +33,22 @@ export function CanvasGrid() {
       renderer.requestRedraw(change);
     });
 
-    // TEMPORARY (Phase 3): pushes whichever algorithm is currently
-    // selected's latest result into the renderer's static overlay. No
-    // index, no timing — see renderer.ts/pathRenderer.ts for why. Phase 5
-    // replaces this whole subscription with one driven by
-    // playbackStore/PlaybackController instead of runStore directly.
-    const pushSelectedResult = () => {
-      const { selectedAlgorithm, results } = runStore.getState();
-      const result = results[selectedAlgorithm];
-      renderer.setAlgorithmResult(result ? result.finalNodeState : null);
+    // Canvas subscribes directly to the PlaybackController (ARCHITECTURE.md
+    // §7: "Canvas subscribes directly, no React re-render"), NOT through
+    // the throttled usePlaybackState() hook — the renderer needs every
+    // tick (up to 60/sec while playing) to animate frontier expansion and
+    // path drawing smoothly; only React-visible text (PlaybackControls'
+    // step counter) goes through the throttled hook.
+    const pushPlaybackFrame = () => {
+      const { events, index } = playbackController.getState();
+      renderer.setPlaybackFrame(events.length > 0 ? events : null, index);
     };
-    pushSelectedResult();
-    const unsubscribeRun = runStore.subscribe(pushSelectedResult);
+    pushPlaybackFrame();
+    const unsubscribePlayback = playbackController.subscribe(pushPlaybackFrame);
 
     return () => {
       unsubscribeWorld();
-      unsubscribeRun();
+      unsubscribePlayback();
       renderer.destroy();
       rendererRef.current = null;
     };
