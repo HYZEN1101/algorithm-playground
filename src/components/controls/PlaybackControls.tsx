@@ -69,7 +69,7 @@ export function PlaybackControls() {
           id="playback-speed"
           type="range"
           min={1}
-          max={200}
+          max={500}
           step={1}
           value={speed}
           onChange={(e) => playbackController.setSpeed(Number(e.target.value))}

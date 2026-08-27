@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { createRenderer, type RendererHandle } from "../../rendering/canvas/renderer";
-import { worldStore, useWorldState } from "../../state/worldStore";
+import { worldStore } from "../../state/worldStore";
 import { playbackController } from "../../state/playbackStore";
 import { useGridInteraction } from "./useGridInteraction";
 
@@ -13,14 +13,6 @@ export function CanvasGrid() {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<RendererHandle | null>(null);
-
-  // Subscribing via useWorldState() here is NOT what drives the canvas
-  // redraw (that would violate "no React re-render per animation frame" —
-  // see ARCHITECTURE.md §1/§16). It's used only so this component
-  // re-renders when the active tool changes, for the cursor style below.
-  // The actual pixel redraw is driven by renderer.requestRedraw(), called
-  // from the *separate* raw (non-React) store subscription in the effect.
-  const { activeTool } = useWorldState();
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -73,7 +65,14 @@ export function CanvasGrid() {
 
   const pointerHandlers = useGridInteraction(canvasRef, rendererRef);
 
-  const cursor = activeTool.kind === "move-start" || activeTool.kind === "move-goal" ? "grab" : "crosshair";
+  // Every tool on this grid uses a crosshair cursor for precise cell
+  // targeting — including move-start/move-goal, which previously used a
+  // "grab" hand cursor (bug: implied free-form dragging, but dropping on
+  // a wall snaps back rather than allowing arbitrary drag targets, per
+  // Phase 2's behavior spec). Fixed to a single constant since there's
+  // currently no tool that needs a different cursor; this is the one
+  // place to branch if that ever changes.
+  const cursor = "crosshair";
 
   return (
     <div ref={containerRef} style={{ width: "100%", height: "100%", minHeight: 0 }}>

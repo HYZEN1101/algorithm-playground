@@ -44,6 +44,19 @@ function createRunStore() {
       state = { ...state, results: { ...state.results, [name]: result } };
       notify();
     },
+
+    /**
+     * Clears every stored result. Needed when the world changes in a way
+     * that makes old results meaningless rather than merely stale — e.g.
+     * a grid resize, where `NodeId = row * width + col` means every old
+     * result's events/finalNodeState reference cells that don't
+     * correspond to the same physical cells (or may not exist at all) on
+     * the new grid.
+     */
+    clearResults(): void {
+      state = { ...state, results: {} };
+      notify();
+    },
   };
 }
 

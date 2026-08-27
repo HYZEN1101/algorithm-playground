@@ -1,5 +1,13 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { worldStore, lineCells, DEFAULT_GRID_WIDTH, DEFAULT_GRID_HEIGHT } from "../../src/state/worldStore";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import {
+  worldStore,
+  lineCells,
+  clampGridDimension,
+  DEFAULT_GRID_WIDTH,
+  DEFAULT_GRID_HEIGHT,
+  MIN_GRID_DIMENSION,
+  MAX_GRID_DIMENSION,
+} from "../../src/state/worldStore";
 import { TerrainType } from "../../src/world/terrain";
 import { Grid } from "../../src/world/grid";
 
@@ -312,5 +320,83 @@ describe("worldStore's dependency on Grid", () => {
   it("Grid can be constructed and used independently of worldStore", () => {
     const g = new Grid(3, 3);
     expect(g.width).toBe(3);
+  });
+});
+
+describe("worldStore.resizeGrid (dynamic, user-settable grid size)", () => {
+  beforeEach(() => {
+    resetToAllRoad();
+  });
+
+  // worldStore is a module-level singleton shared across this whole test
+  // file — resizing must not leak into later tests that assume
+  // DEFAULT_GRID_WIDTH/HEIGHT, so every test in this block restores the
+  // default dimensions afterward.
+  afterEach(() => {
+    worldStore.resizeGrid(DEFAULT_GRID_WIDTH, DEFAULT_GRID_HEIGHT);
+  });
+
+  it("changes the grid's width and height", () => {
+    worldStore.resizeGrid(40, 25);
+    const { grid } = worldStore.getState();
+    expect(grid.width).toBe(40);
+    expect(grid.height).toBe(25);
+  });
+
+  it("clamps below MIN_GRID_DIMENSION up to the minimum", () => {
+    worldStore.resizeGrid(1, 1);
+    const { grid } = worldStore.getState();
+    expect(grid.width).toBe(MIN_GRID_DIMENSION);
+    expect(grid.height).toBe(MIN_GRID_DIMENSION);
+  });
+
+  it("clamps above MAX_GRID_DIMENSION down to the maximum", () => {
+    worldStore.resizeGrid(10000, 10000);
+    const { grid } = worldStore.getState();
+    expect(grid.width).toBe(MAX_GRID_DIMENSION);
+    expect(grid.height).toBe(MAX_GRID_DIMENSION);
+  });
+
+  it("relocates start/goal to valid positions on the new (smaller) grid", () => {
+    worldStore.resizeGrid(6, 6);
+    const { grid, start, goal } = worldStore.getState();
+    expect(grid.isPassable(start)).toBe(true);
+    expect(grid.isPassable(goal)).toBe(true);
+    expect(start).not.toBe(goal);
+    // Both ids must actually be valid coordinates on the NEW grid — the
+    // real bug this guards against: reusing an old-width-derived NodeId
+    // against a resized grid produces nonsense coordinates via
+    // coordOf(id), since row = Math.floor(id / newWidth) silently
+    // "succeeds" with a wrong answer instead of throwing.
+    const { row: startRow } = grid.coordOf(start);
+    const { row: goalRow } = grid.coordOf(goal);
+    expect(startRow).toBeLessThan(grid.height);
+    expect(goalRow).toBeLessThan(grid.height);
+  });
+
+  it("issues a single 'full' change notification, not per-cell notifications", () => {
+    const changes: unknown[] = [];
+    const unsubscribe = worldStore.subscribe((change) => changes.push(change));
+    worldStore.resizeGrid(20, 20);
+    unsubscribe();
+    expect(changes).toEqual([{ kind: "full" }]);
+  });
+
+  it("is deterministic for a fixed seed, matching generateRandom's own reproducibility guarantee", () => {
+    worldStore.resizeGrid(30, 30);
+    const gridA = worldStore.getState().grid;
+    worldStore.resizeGrid(20, 20); // perturb dimensions (seed stays the same)
+    worldStore.resizeGrid(30, 30); // back to the original dimensions, same seed
+    const gridB = worldStore.getState().grid;
+    expect(gridA.equals(gridB)).toBe(true);
+  });
+});
+
+describe("clampGridDimension", () => {
+  it("rounds and clamps into [MIN_GRID_DIMENSION, MAX_GRID_DIMENSION]", () => {
+    expect(clampGridDimension(50.6)).toBe(51);
+    expect(clampGridDimension(-10)).toBe(MIN_GRID_DIMENSION);
+    expect(clampGridDimension(999999)).toBe(MAX_GRID_DIMENSION);
+    expect(clampGridDimension(Number.NaN)).toBe(MIN_GRID_DIMENSION);
   });
 });

@@ -12,6 +12,12 @@ export type { WorldConfig };
 
 export const DEFAULT_GRID_WIDTH = 100;
 export const DEFAULT_GRID_HEIGHT = 100;
+// Sensible bounds for the user-facing grid-size control: below MIN, the
+// grid feels trivial and start/goal placement (row/2, col 1/width-2) can
+// collide; above MAX, well past ARCHITECTURE.md §16's 200×200 stress
+// target, into territory this project has never measured performance at.
+export const MIN_GRID_DIMENSION = 5;
+export const MAX_GRID_DIMENSION = 300;
 // Not exposed as UI in Phase 2 (no density slider was specified) — fixed
 // constant used by the Generate button. Revisit if a later phase adds a
 // density control.
@@ -45,6 +51,12 @@ export interface WorldState {
   goal: NodeId;
   seed: number;
   activeTool: Tool;
+}
+
+/** Clamps a user-entered dimension into [MIN_GRID_DIMENSION, MAX_GRID_DIMENSION], per this store's own bounds. */
+export function clampGridDimension(value: number): number {
+  if (!Number.isFinite(value)) return MIN_GRID_DIMENSION;
+  return Math.round(Math.min(MAX_GRID_DIMENSION, Math.max(MIN_GRID_DIMENSION, value)));
 }
 
 function defaultStartGoal(width: number, height: number): { start: NodeId; goal: NodeId } {
@@ -223,6 +235,33 @@ function createWorldStore() {
       const start = findNearestPassable(grid, state.start);
       const goal = findNearestPassable(grid, state.goal);
       setState({ ...state, grid, start, goal, seed }, { kind: "full" });
+    },
+
+    /**
+     * Changes grid dimensions. This is a harder reset than `generateRandom`
+     * (which keeps width/height fixed): `NodeId = row * width + col`, so
+     * every existing NodeId — including the current start/goal and any
+     * loaded algorithm-result events — is meaningless once `width` changes.
+     * Regenerates a fresh grid at the new dimensions (same seed + density,
+     * so resizing is still deterministic/reproducible like any other
+     * generation) and recomputes default start/goal positions from
+     * scratch, rather than attempting to remap old NodeIds onto the new
+     * grid (there is no sensible remapping — a resize is a new world, not
+     * an edit of the old one).
+     *
+     * Callers are responsible for clearing anything else that holds old
+     * NodeIds referencing the previous dimensions (loaded playback events,
+     * cached algorithm results) — this store only owns World state, not
+     * Algorithm/Playback state, per ARCHITECTURE.md §1's layer boundary.
+     */
+    resizeGrid(width: number, height: number, density: number = DEFAULT_DENSITY): void {
+      const clampedWidth = clampGridDimension(width);
+      const clampedHeight = clampGridDimension(height);
+      const grid = generateRandomObstacles(state.seed, clampedWidth, clampedHeight, density);
+      const { start, goal } = defaultStartGoal(clampedWidth, clampedHeight);
+      const safeStart = findNearestPassable(grid, start);
+      const safeGoal = findNearestPassable(grid, goal);
+      setState({ ...state, grid, start: safeStart, goal: safeGoal }, { kind: "full" });
     },
 
     /** Resets to an all-Road grid of the same dimensions. */

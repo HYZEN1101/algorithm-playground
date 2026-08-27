@@ -24,19 +24,20 @@ every phase — before moving to the next one, not after starting it.
 
 ## Current Status
 
-**Active phase:** Phase 5 (Playback Controller) — COMPLETE.
+**Active phase:** Post-Phase-5 bug fix / enhancement pass — COMPLETE.
 **Next phase to start:** Phase 6 — Inspector + Metrics Panel (`phases/PHASE_6_INSPECTOR_METRICS.md`).
 **Blocking issues:** none.
 **Repo state:** working Vite + React + TypeScript + Vitest project. All four
 MVP pathfinding algorithms (BFS, DFS, Dijkstra, A*) are implemented and
-tested (162 tests, unchanged from Phase 4). The real `PlaybackController` /
-`deriveNodeStates` / `PlaybackControls` system now exists and replaces the
-Phase 3/4 temporary "Run and show final state" flow entirely — Play, Pause,
-Step Forward/Backward, Reset, and a Speed slider all work against a live
-event timeline; the canvas overlay animates frontier expansion, visited
-cells, current-node highlight, and path drawing as playback advances,
-exactly what the user asked for before Phase 5 began. 200/200 tests passing
-(162 from Phases 1–4, unchanged, + 38 new for `playback/`).
+tested. The real `PlaybackController`-driven playback system from Phase 5
+is in place (Play/Pause/Step/Reset/Speed, animated frontier/visited/
+current-node/path overlay). Since Phase 5 closed out, three user-reported
+items were fixed: the move-start/move-goal cursor now correctly shows a
+crosshair instead of a grab hand; grid size is now user-settable (5–300 per
+side) via a new "Resize Grid" control, instead of being fixed at the
+100×100 default; and the playback speed slider's ceiling was raised from
+200 to 500 events/sec. 207/207 tests passing (200 from Phases 1–5,
+unchanged, + 7 new for the grid-resize feature).
 
 ---
 
@@ -349,6 +350,86 @@ log is the project's institutional memory.
   for its live "Nodes Explored so far" counter, per this phase's note that
   it must be driven by the same index source of truth as the renderer, not
   a separately-computed value that could drift.
+
+### Post-Phase-5 Bug Fix / Enhancement Pass (user bug report, pre-Phase-6)
+- Status: COMPLETE. Three items from a direct user bug report, addressed
+  outside the formal phase sequence since none required new architecture —
+  Phase 6 (Inspector + Metrics) is still next.
+- **Bug: move-start/move-goal showed a "grab" hand cursor instead of a
+  crosshair.** `CanvasGrid.tsx`'s cursor logic was inverted from what the
+  interaction actually does — dropping start/goal on a wall snaps back
+  rather than allowing genuine free-form dragging, so the "grab" hand
+  cursor (which implies exactly that free-form dragging) was misleading.
+  Fixed: cursor is now `"crosshair"` for every tool, including
+  move-start/move-goal. The `useWorldState()` subscription that existed
+  solely to re-render this component on tool change (for the old
+  per-tool cursor logic) was removed along with it, since the cursor no
+  longer varies by tool — nothing else in `CanvasGrid.tsx` needed that
+  subscription.
+- **Feature: dynamic, user-settable grid size.** Previously the grid was
+  fixed at `DEFAULT_GRID_WIDTH`/`DEFAULT_GRID_HEIGHT` (100×100) with no UI
+  to change it (Phase 2's own notes flagged this as a manual
+  constant-editing exercise, not a real control). Added:
+  - `worldStore.resizeGrid(width, height, density?)` — a new mutator,
+    documented as a harder reset than `generateRandom`: since
+    `NodeId = row * width + col`, changing `width` makes every existing
+    NodeId meaningless, so this regenerates a fresh grid at the new
+    dimensions (same seed + density, still deterministic/reproducible)
+    and recomputes default start/goal from scratch rather than attempting
+    to remap old NodeIds — there's no sensible remapping for a dimension
+    change.
+  - `clampGridDimension()` + exported `MIN_GRID_DIMENSION` (5) /
+    `MAX_GRID_DIMENSION` (300) constants — 5 is small enough to be usable
+    without start/goal placement colliding; 300 is chosen as comfortably
+    past ARCHITECTURE.md §16's 200×200 stress target into territory this
+    project has never measured, a deliberately conservative ceiling rather
+    than an arbitrary large number.
+  - A "Grid size" control (width × height number inputs + "Resize Grid"
+    button) added to `GenerateButton.tsx`, alongside the existing seed
+    input — same local-state-then-commit pattern as the seed field.
+  - `runStore.clearResults()` — new method, and `resizeGrid`'s UI handler
+    also calls `playbackController.load([])` after resizing. This is
+    necessary, not cosmetic: an old algorithm result's events/
+    `finalNodeState` reference NodeIds computed against the *previous*
+    width, so replaying them against the new grid via `coordOf()` would
+    silently compute wrong (but validly in-range) coordinates rather than
+    erroring — a correctness bug, not just stale-looking UI, if left
+    unhandled.
+  - Explicitly NOT applied to `generateRandom`/`clear()` (same-dimension
+    world edits) — Phase 3's original notes already consciously deferred
+    that decision ("worth a conscious decision once Phase 5's real
+    playback system exists... not silently carried forward indefinitely"),
+    and a same-width edit doesn't have the hard NodeId-corruption problem
+    a resize does, only the softer "overlay looks stale" issue. Left as a
+    separate decision for whoever picks it up, rather than silently
+    expanding this bug-fix pass's scope.
+  - Tests added directly to `tests/state/worldStore.test.ts`
+    (`resizeGrid` and `clampGridDimension` describe blocks): dimension
+    change, clamping both directions, start/goal relocation validity on a
+    shrunk grid, single "full" change notification (not per-cell), and
+    determinism (same seed + dimensions round-trip to an identical grid
+    via `Grid.equals()`, consistent with `generateRandom`'s own
+    reproducibility guarantee). Since `worldStore` is a module-level
+    singleton shared across the whole test file, this new describe block
+    restores default dimensions in its own `afterEach` so it doesn't leak
+    into other tests in the file that assume `DEFAULT_GRID_WIDTH`/`HEIGHT`.
+- **Enhancement: playback speed ceiling raised from 200 to 500 events/sec.**
+  `PlaybackControls.tsx`'s speed slider `max` was `200`; changed to `500`
+  per direct user request ("make the evolutions speed faster than 200,
+  500 should be good enough"). No controller-side change needed —
+  `PlaybackController.setSpeed()` already accepted any positive value;
+  only the slider's UI ceiling was limiting it.
+- Verification: `tsc --noEmit` clean; `npx vitest run` → 12 test files,
+  **207 tests passing** (200 from Phases 1–5 unchanged + 7 new
+  `resizeGrid`/`clampGridDimension` tests); `npm run build` succeeds;
+  every modified/new-behavior file (`CanvasGrid.tsx`, `worldStore.ts`,
+  `runStore.ts`, `GenerateButton.tsx`, `PlaybackControls.tsx`) confirmed
+  resolving via a dev server with no compile errors.
+- Known limitation carried forward: resizing while an algorithm is mid-
+  playback clears that playback (by design, per the NodeId-corruption
+  reasoning above) — there's no "are you sure" confirmation before this
+  happens. Minor UX polish, not correctness; worth revisiting during
+  Phase 8's polish pass if it comes up again.
 
 ### Phase 6 — Inspector + Metrics
 - Status: NOT STARTED
