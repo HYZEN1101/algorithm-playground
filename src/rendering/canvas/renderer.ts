@@ -4,7 +4,7 @@ import type { AlgorithmEvent, NodeState } from "../../algorithms/pathfinding/typ
 import { computeCellMetrics, configureCanvasBackingStore, type CellMetrics } from "../coordinates";
 import { drawStaticLayer, drawCells } from "./gridRenderer";
 import { drawPathOverlay } from "./pathRenderer";
-import { deriveNodeStates, findCurrentNode } from "../../playback/deriveNodeStates";
+import { createIncrementalNodeStateDeriver } from "../../playback/deriveNodeStates";
 
 export interface RendererWorldSource {
   getState(): { grid: Grid; start: NodeId; goal: NodeId };
@@ -87,6 +87,16 @@ export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSo
 
   let metrics: CellMetrics | null = null;
   let dpr = 1;
+  // Last known CSS size passed to updateSize() — kept so metrics can be
+  // recomputed reactively when the world's grid *dimensions* change
+  // (worldStore.resizeGrid) without requiring a container/window resize
+  // event to also fire. Without this, resizing the grid left `metrics`
+  // stale (still reflecting the OLD width/height), so cellSize was
+  // computed for the wrong grid shape — a bigger new grid would overflow
+  // the canvas and appear "cropped" to its top-left corner; a smaller one
+  // would leave dead space. (Found via user bug report post-Phase-5.)
+  let lastCssWidth: number | null = null;
+  let lastCssHeight: number | null = null;
   // "full" | Set<NodeId> (specific cells pending) | null (nothing pending).
   // A "full" pending redraw absorbs any subsequently-requested cell ids —
   // no need to track both.
@@ -94,6 +104,12 @@ export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSo
   let currentNodeState: Map<NodeId, NodeState> | null = null;
   let currentNodeId: NodeId | null = null;
   let algorithmPending = true; // draw once on first frame (clears the overlay to empty)
+  // Incremental, not the pure deriveNodeStates — this gets called once per
+  // playback notify (up to the real device's rAF rate while playing), and
+  // recomputing the full event timeline from scratch on every call is
+  // exactly the "sluggish at high speed" cost this exists to avoid. See
+  // createIncrementalNodeStateDeriver's own doc comment for the reasoning.
+  const nodeStateDeriver = createIncrementalNodeStateDeriver();
   let rafHandle: number | null = null;
   let destroyed = false;
 
@@ -123,8 +139,33 @@ export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSo
     drawPathOverlay(algorithmOffscreenCtx!, grid, metrics, currentNodeState, currentNodeId);
   }
 
+  /**
+   * Recomputes `metrics` if the world's grid dimensions have drifted from
+   * what `metrics` was last computed for — the reactive fix for the
+   * "resize crops the grid" bug. Cheap (two integer comparisons) so it's
+   * safe to call unconditionally every frame; only does real work
+   * (computeCellMetrics + forcing a full redraw) on the rare frame right
+   * after a dimension change actually happens.
+   */
+  function syncMetricsToGridDimensions(): void {
+    if (metrics === null || lastCssWidth === null || lastCssHeight === null) return;
+    const { grid } = world.getState();
+    if (metrics.gridWidth === grid.width && metrics.gridHeight === grid.height) return;
+
+    metrics = computeCellMetrics({
+      gridWidth: grid.width,
+      gridHeight: grid.height,
+      canvasWidth: lastCssWidth,
+      canvasHeight: lastCssHeight,
+    });
+    pending = "full";
+    algorithmPending = true;
+  }
+
   function frame(): void {
     if (destroyed) return;
+
+    syncMetricsToGridDimensions();
 
     if (pending === "full") {
       drawFull();
@@ -178,6 +219,8 @@ export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSo
 
     updateSize(cssWidth: number, cssHeight: number, nextDpr: number): void {
       dpr = nextDpr;
+      lastCssWidth = cssWidth;
+      lastCssHeight = cssHeight;
       configureCanvasBackingStore(canvas, cssWidth, cssHeight, dpr);
       configureCanvasBackingStore(offscreen, cssWidth, cssHeight, dpr);
       configureCanvasBackingStore(algorithmOffscreen, cssWidth, cssHeight, dpr);
@@ -216,8 +259,9 @@ export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSo
         currentNodeState = null;
         currentNodeId = null;
       } else {
-        currentNodeState = deriveNodeStates(events, index);
-        currentNodeId = findCurrentNode(events, index);
+        const frame = nodeStateDeriver.derive(events, index);
+        currentNodeState = frame.states;
+        currentNodeId = frame.currentNodeId;
       }
       algorithmPending = true;
     },

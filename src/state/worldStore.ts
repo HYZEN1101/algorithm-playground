@@ -23,7 +23,7 @@ export const MAX_GRID_DIMENSION = 300;
 // density control.
 const DEFAULT_DENSITY = 0.22;
 
-export type Tool = { kind: "paint"; terrain: TerrainType } | { kind: "move-start" } | { kind: "move-goal" };
+export type Tool = { kind: "paint"; terrain: TerrainType } | { kind: "move-start" } | { kind: "move-goal" } | { kind: "inspect" };
 
 /**
  * Describes what changed on a given store update, so subscribers that care

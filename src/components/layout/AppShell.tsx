@@ -3,12 +3,14 @@ import { TerrainPicker } from "../controls/TerrainPicker";
 import { GenerateButton } from "../controls/GenerateButton";
 import { AlgorithmPicker } from "../controls/AlgorithmPicker";
 import { PlaybackControls } from "../controls/PlaybackControls";
+import { NodeInspector } from "../inspector/NodeInspector";
+import { MetricsPanel } from "../metrics/MetricsPanel";
 
 /**
  * Conceptual 3-panel layout from ARCHITECTURE.md §9: left = algorithm/
- * settings panel, center = CanvasGrid, right = NodeInspector. Bottom bar
- * now hosts the real PlaybackControls (Phase 5). The right panel
- * (Inspector) and a Metrics panel are still placeholders until Phase 6.
+ * settings panel, center = CanvasGrid, right = NodeInspector (Phase 6).
+ * Bottom bar hosts PlaybackControls (Phase 5) and, above it, MetricsPanel
+ * (Phase 6).
  */
 export function AppShell() {
   return (
@@ -33,7 +35,7 @@ export function AppShell() {
         }}
       >
         <strong style={{ fontSize: 15 }}>Algorithm Playground</strong>
-        <span style={{ fontSize: 12, color: "#888" }}>Phase 5 — Playback Controller</span>
+        <span style={{ fontSize: 12, color: "#888" }}>Phase 6 — Inspector + Metrics</span>
       </header>
 
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
@@ -63,16 +65,18 @@ export function AppShell() {
             flexShrink: 0,
             padding: 16,
             borderLeft: "1px solid #e2ddd2",
-            color: "#999",
-            fontSize: 13,
+            overflowY: "auto",
           }}
         >
-          Inspector — coming in a later phase.
+          <NodeInspector />
         </aside>
       </div>
 
       <div style={{ borderTop: "1px solid #e2ddd2", flexShrink: 0 }}>
-        <PlaybackControls />
+        <MetricsPanel />
+        <div style={{ borderTop: "1px solid #eee" }}>
+          <PlaybackControls />
+        </div>
       </div>
     </div>
   );

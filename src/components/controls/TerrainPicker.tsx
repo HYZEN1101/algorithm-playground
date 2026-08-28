@@ -129,6 +129,29 @@ export function TerrainPicker() {
         />
         Move Goal
       </button>
+      <h2 style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.06em", color: "#666", margin: "16px 0 8px" }}>
+        Inspect
+      </h2>
+      <button
+        type="button"
+        aria-pressed={activeTool.kind === "inspect"}
+        style={toolButtonStyle(activeTool.kind === "inspect")}
+        onClick={() => worldStore.setActiveTool({ kind: "inspect" })}
+      >
+        <span
+          aria-hidden="true"
+          style={{
+            display: "inline-block",
+            width: 14,
+            height: 14,
+            borderRadius: "50%",
+            border: "2px solid #2c2a28",
+            marginRight: 8,
+            verticalAlign: "middle",
+          }}
+        />
+        Inspect Cell
+      </button>
     </div>
   );
 }

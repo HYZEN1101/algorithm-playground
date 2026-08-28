@@ -2,6 +2,7 @@ import { useRef, useCallback, type PointerEvent as ReactPointerEvent, type RefOb
 import { pixelToGrid, type CellMetrics } from "../../rendering/coordinates";
 import type { TerrainType } from "../../world/terrain";
 import { worldStore } from "../../state/worldStore";
+import { uiStore } from "../../state/uiStore";
 
 /**
  * Deliberately NOT importing RendererHandle from renderer.ts here — that
@@ -71,6 +72,16 @@ export function useGridInteraction(
       } else if (activeTool.kind === "move-goal") {
         worldStore.moveGoal(id);
         dragRef.current = { mode: "move-goal" };
+      } else if (activeTool.kind === "inspect") {
+        // Click-to-select for the Inspector (Phase 6), via its own
+        // explicit tool rather than an always-active hover/click — same
+        // rationale Phase 2 already used for paint vs. move: overloading
+        // a bare click across multiple meanings (paint AND select AND
+        // move) is ambiguous once more than one tool exists. Single
+        // click only, no drag-to-select — dragRef stays unset so
+        // onPointerMove's early-return leaves the selection alone while
+        // dragging, matching plain click semantics.
+        uiStore.selectNode(id);
       }
 
       canvasRef.current?.setPointerCapture(e.pointerId);

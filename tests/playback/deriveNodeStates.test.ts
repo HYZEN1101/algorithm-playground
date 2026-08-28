@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { deriveNodeStates, findCurrentNode } from "../../src/playback/deriveNodeStates";
+import { deriveNodeStates, findCurrentNode, createIncrementalNodeStateDeriver } from "../../src/playback/deriveNodeStates";
 import type { AlgorithmEvent } from "../../src/algorithms/pathfinding/types";
 
 describe("deriveNodeStates", () => {
@@ -101,6 +101,73 @@ describe("deriveNodeStates", () => {
     expect(states.get(1)?.order).toBe(0);
     expect(states.get(2)?.order).toBe(1);
     expect(states.get(3)?.order).toBe(2);
+  });
+});
+
+describe("createIncrementalNodeStateDeriver", () => {
+  function buildLongTimeline(n: number): AlgorithmEvent[] {
+    const events: AlgorithmEvent[] = [];
+    for (let i = 0; i < n; i++) {
+      events.push({ type: "ADD_TO_FRONTIER", nodeId: i });
+      events.push({ type: "REMOVE_FROM_FRONTIER", nodeId: i });
+      events.push({ type: "VISIT_NODE", nodeId: i });
+      events.push({ type: "UPDATE_DISTANCE", nodeId: i, distance: i });
+    }
+    return events;
+  }
+
+  it("matches the pure deriveNodeStates output when advancing forward step by step", () => {
+    const events = buildLongTimeline(50);
+    const incremental = createIncrementalNodeStateDeriver();
+
+    for (let index = 0; index <= events.length; index += 3) {
+      const expected = deriveNodeStates(events, index);
+      const actual = incremental.derive(events, index);
+      expect(new Map(actual.states)).toEqual(expected);
+      expect(actual.currentNodeId).toBe(findCurrentNode(events, index));
+    }
+  });
+
+  it("matches the pure output after a full run advanced in a single call", () => {
+    const events = buildLongTimeline(200);
+    const incremental = createIncrementalNodeStateDeriver();
+    const actual = incremental.derive(events, events.length);
+    const expected = deriveNodeStates(events, events.length);
+    expect(new Map(actual.states)).toEqual(expected);
+  });
+
+  it("falls back correctly when the index moves backward (step-back/seek/reset)", () => {
+    const events = buildLongTimeline(20);
+    const incremental = createIncrementalNodeStateDeriver();
+
+    incremental.derive(events, 40); // advance forward first
+    const backward = incremental.derive(events, 10); // then jump backward
+    expect(new Map(backward.states)).toEqual(deriveNodeStates(events, 10));
+    expect(backward.currentNodeId).toBe(findCurrentNode(events, 10));
+
+    // And forward again from the rolled-back point, to confirm the cache
+    // wasn't left in some inconsistent half-reset state.
+    const forwardAgain = incremental.derive(events, 40);
+    expect(new Map(forwardAgain.states)).toEqual(deriveNodeStates(events, 40));
+  });
+
+  it("resets cleanly when given a different events array (a new algorithm run)", () => {
+    const eventsA = buildLongTimeline(10);
+    const eventsB = buildLongTimeline(5); // distinct array reference, different content
+
+    const incremental = createIncrementalNodeStateDeriver();
+    incremental.derive(eventsA, eventsA.length);
+
+    const resultB = incremental.derive(eventsB, eventsB.length);
+    expect(new Map(resultB.states)).toEqual(deriveNodeStates(eventsB, eventsB.length));
+  });
+
+  it("handles upToIndex of 0 (nothing played yet)", () => {
+    const events = buildLongTimeline(5);
+    const incremental = createIncrementalNodeStateDeriver();
+    const result = incremental.derive(events, 0);
+    expect(result.states.size).toBe(0);
+    expect(result.currentNodeId).toBeNull();
   });
 });
 

@@ -24,20 +24,18 @@ every phase — before moving to the next one, not after starting it.
 
 ## Current Status
 
-**Active phase:** Post-Phase-5 bug fix / enhancement pass — COMPLETE.
-**Next phase to start:** Phase 6 — Inspector + Metrics Panel (`phases/PHASE_6_INSPECTOR_METRICS.md`).
+**Active phase:** Phase 6 (Inspector + Metrics) — COMPLETE.
+**Next phase to start:** Phase 7 — Accessibility + Performance (`phases/PHASE_7_ACCESSIBILITY_PERFORMANCE.md`).
 **Blocking issues:** none.
 **Repo state:** working Vite + React + TypeScript + Vitest project. All four
 MVP pathfinding algorithms (BFS, DFS, Dijkstra, A*) are implemented and
-tested. The real `PlaybackController`-driven playback system from Phase 5
-is in place (Play/Pause/Step/Reset/Speed, animated frontier/visited/
-current-node/path overlay). Since Phase 5 closed out, three user-reported
-items were fixed: the move-start/move-goal cursor now correctly shows a
-crosshair instead of a grab hand; grid size is now user-settable (5–300 per
-side) via a new "Resize Grid" control, instead of being fixed at the
-100×100 default; and the playback speed slider's ceiling was raised from
-200 to 500 events/sec. 207/207 tests passing (200 from Phases 1–5,
-unchanged, + 7 new for the grid-resize feature).
+tested. Real playback (Phase 5) is in place, with the grid-crop and
+playback-speed bugs from the two post-Phase-5 bug-fix passes both fixed.
+The Inspector (right panel) and Metrics panel (above the playback bar) now
+exist and are live: selecting a cell with the new "Inspect" tool shows its
+algorithm-specific fields, updating in step with playback; the Metrics
+panel shows a live Nodes Explored counter plus Path Length/Cost, with
+execution time clearly separated as browser timing. 222/222 tests passing.
 
 ---
 
@@ -431,8 +429,177 @@ log is the project's institutional memory.
   happens. Minor UX polish, not correctness; worth revisiting during
   Phase 8's polish pass if it comes up again.
 
+### Post-Phase-5 Bug Fix Pass 2 (grid crop + playback slowness, pre-Phase-6)
+- Status: COMPLETE. Two more items from direct user follow-up on the
+  previous bug-fix pass.
+- **Bug: resizing the grid just cropped it instead of scaling.**
+  `renderer.ts`'s `metrics` (which encodes cell size, computed from grid
+  width/height + canvas CSS size) was only ever recomputed inside
+  `updateSize()`, called on container/window resize — never when the
+  world's grid *dimensions* changed via `worldStore.resizeGrid()`. So
+  after a resize, `metrics` kept using the OLD width/height: for a larger
+  new grid this made `cellSize` too big for the new grid to fit in the
+  same canvas area, so only the top-left portion was visible (cropped);
+  for a smaller grid it left dead space. **Fix**: added
+  `syncMetricsToGridDimensions()`, called at the top of the renderer's own
+  `frame()` loop (which already runs continuously) — cheap (two integer
+  comparisons) on every frame, and on the rare frame where
+  `metrics.gridWidth/gridHeight` no longer matches the live grid's
+  dimensions, recomputes `metrics` from the last known CSS size (now
+  cached in `lastCssWidth`/`lastCssHeight`, set in `updateSize`) and
+  forces a full redraw. This makes the fix reactive to *any* dimension
+  change regardless of what triggered it, not just a call from
+  `GenerateButton.tsx` specifically.
+- **Complaint: playback still felt slow even at the raised 500 events/sec
+  ceiling.** Root cause was not the configured speed itself — investigated
+  and confirmed `PlaybackController`'s index genuinely advances at the
+  correct rate. The actual bottleneck: `renderer.setPlaybackFrame()` was
+  calling the pure `deriveNodeStates(events, index)`, which replays
+  **every event from 0** on **every single call** — and it's called once
+  per playback notification, i.e. up to the browser's real rAF rate while
+  playing. For a long run (thousands of events on a default 100×100 grid),
+  this meant each animation frame did more work than the last as `index`
+  grew, a classic O(n²)-over-the-course-of-playback shape that gets worse
+  precisely when speed is turned up (more index advancement per frame,
+  same full-replay cost per frame). This was already flagged as a known
+  risk in `ARCHITECTURE.md` §16/§20 and explicitly deferred to Phase 7 in
+  Phase 5's own HANDOFF notes ("if scrubbing feels laggy... this is the
+  first place to look") — pulled forward now since a user actually hit it.
+  **Fix**: added `createIncrementalNodeStateDeriver()` to
+  `deriveNodeStates.ts`, sharing the same per-event `applyEvent` logic as
+  the (still-unchanged, still-pure, still used by Phase 6 planning notes
+  and its own tests) `deriveNodeStates` function. The incremental version
+  caches `(events reference, last index, accumulated state)` and applies
+  only the delta since the last call when `events` is the same array and
+  the index moved forward — O(delta) instead of O(index) per frame. Falls
+  back to a full recompute (still correct, just not the fast path) when
+  the index moves backward (step-back/seek/reset) or a new run is loaded
+  (different `events` array reference — reliable here since
+  `PlaybackController.load()` always installs a fresh array). Wired into
+  `renderer.ts` in place of the old `deriveNodeStates` + `findCurrentNode`
+  pair (now combined into one `derive()` call returning both).
+- Verification: `tsc --noEmit` clean; `npx vitest run` → 12 test files,
+  **212 tests passing** (207 previous + 5 new incremental-deriver tests,
+  which assert the incremental path produces byte-identical output to the
+  pure `deriveNodeStates` at every checked index, both advancing and after
+  a backward jump); `npm run build` succeeds.
+- **What still needs a human in a real browser**: neither the crop fix nor
+  the perceived-speed fix can be fully confirmed without an actual canvas
+  and a real rAF cadence — this sandbox has no browser. Manual check to
+  run: resize the grid larger and smaller and confirm the full grid is
+  always visible and correctly proportioned; run BFS/A* on a large-ish
+  generated map at 500 ev/s and confirm the animation keeps pace with the
+  configured speed all the way to the end, not just at the start.
+- Known limitation carried forward: `pathRenderer.ts`'s overlay draw still
+  does three full passes over the current `states` map every frame
+  (frontier/visited/path) — proportional to nodes touched so far, not to
+  total events, so it's a much smaller cost than the deriveNodeStates
+  issue just fixed, but still real work every frame. Left alone this pass
+  since it wasn't the reported bottleneck; still fair game for Phase 7's
+  formal performance pass if it turns out to matter at 200×200.
+
 ### Phase 6 — Inspector + Metrics
 - Status: NOT STARTED
+
+### Phase 6 — Inspector + Metrics
+- Status: COMPLETE
+- Files created: `src/state/uiStore.ts` (`selectedNodeId` + `useUIState()`,
+  the same framework-agnostic-store-plus-hook pattern as `worldStore`/
+  `runStore`/`playbackStore`), `src/components/inspector/fieldDescriptors.ts`
+  (declarative per-algorithm field lists), `src/components/inspector/NodeInspector.tsx`,
+  `src/components/metrics/MetricsPanel.tsx`, `tests/components/fieldDescriptors.test.ts`.
+- Files modified: `src/state/worldStore.ts` (`Tool` union extended with a
+  new `{ kind: "inspect" }` variant), `src/components/grid/useGridInteraction.ts`
+  (handles the inspect tool: single click sets `uiStore.selectedNodeId`, no
+  drag-to-select), `src/components/controls/TerrainPicker.tsx` (new
+  "Inspect Cell" toolbar button, same selected/unselected styling as every
+  other tool), `src/components/layout/AppShell.tsx` (wires `NodeInspector`
+  into the right panel, `MetricsPanel` above `PlaybackControls` in the
+  bottom bar, updates header label).
+- **Interaction model decision** (the phase file's own open question):
+  chose a distinct "Inspect" tool in the existing toolbar, not an
+  always-active hover/click. Same reasoning Phase 2 already used for
+  paint-vs-move: overloading a bare click across paint/move/select
+  meanings would be ambiguous once more than one tool exists, and this
+  project already has an established explicit-tool-selection pattern —
+  adding a fourth `Tool` variant was the smaller, more consistent change
+  than inventing a parallel "selection mode" concept. Selection is
+  click-only (no drag-to-select across cells while dragging with Inspect
+  active) — `dragRef` is deliberately left unset for the inspect case, so
+  `onPointerMove`'s existing early-return naturally gives plain click
+  semantics with zero new interaction-hook branches.
+- **NodeInspector's data source**: prefers the live playback timeline
+  (`deriveNodeStates(events, index)` for the selected node) when the
+  currently-loaded playback events belong to the currently-selected
+  algorithm's own result (checked via array reference equality, the same
+  technique `MetricsPanel` and `AlgorithmPicker`/`renderer.ts` already rely
+  on elsewhere in this codebase) — falls back to that algorithm's
+  `finalNodeState` otherwise, so selecting a cell right after a run
+  completes (or after switching which algorithm is selected without
+  re-running) still shows something meaningful instead of blanking out.
+  Deliberately uses the PURE `deriveNodeStates`, not the renderer's
+  incremental deriver added in the post-Phase-5 perf fix — this is exactly
+  the "one-off read of a single node, called at most ~10/sec via the
+  throttled `usePlaybackState()` hook" case that function's own doc
+  comment identifies as the right fit; the incremental deriver exists
+  specifically for the renderer's much higher-frequency, whole-map use.
+- **MetricsPanel's live counter**: counts `VISIT_NODE` events up to the
+  current playback index directly from `usePlaybackState()` — the same
+  `PlaybackController` instance the renderer subscribes to (just via the
+  throttled hook instead of a direct subscription), per this phase's own
+  acceptance criterion that the counter must be driven by the same index
+  source of truth as the renderer, not a separately-computed value that
+  could drift. Falls back to the result's own final `nodesExplored` when
+  the loaded timeline doesn't belong to the currently-selected algorithm's
+  result (same reference-equality check as NodeInspector).
+- **No hard-coded field lists duplicated between `fieldDescriptors.ts` and
+  `NodeInspector.tsx`**: verified directly — `NodeInspector.tsx` contains
+  zero field-name string literals; it only ever calls
+  `getFieldDescriptors(selectedAlgorithm)` and maps over whatever comes
+  back. Confirmed via grep (no `"State"`/`"Distance"`/`"G Score"`/etc.
+  string literals anywhere in `NodeInspector.tsx`).
+- **Copy discipline**: no "N times faster" language anywhere in
+  `MetricsPanel.tsx` (guideline §16 hard requirement) — execution time is
+  shown as a plain millisecond figure, explicitly labeled "browser timing
+  — not an algorithmic complexity measure", never compared numerically
+  against another algorithm's time.
+- Verification:
+  - `npx tsc --noEmit` → 0 errors
+  - `npx vitest run` → 13 test files, **222 tests passing** (212 previous
+    + 10 new `fieldDescriptors` tests covering all four algorithms' field
+    sets, empty-state "—" rendering, status-label mapping, parent
+    coordinate formatting, and terrain/neighbor-count reads against a real
+    `Grid`)
+  - `npm run build` → succeeds
+  - Dev server → every new/modified module resolves (HTTP 200, no compile
+    errors): `uiStore.ts`, `fieldDescriptors.ts`, `NodeInspector.tsx`,
+    `MetricsPanel.tsx`, `TerrainPicker.tsx`, `useGridInteraction.ts`,
+    `AppShell.tsx`, confirmed via curl
+  - Import-boundary check: `inspector/`/`metrics/` components only import
+    from `state/`, `algorithms/`, `world/`, and `react` — no imports of
+    `rendering/`, consistent with ARCHITECTURE.md §9's "components read
+    from stores via hooks" rule
+- **What still needs a human in a real browser**: the phase file's own
+  manual acceptance criterion — select a frontier node with the Inspect
+  tool, press Play, watch it transition to Visited with a filled-in
+  distance/score at the correct step, confirm the Metrics panel's Nodes
+  Explored counter advances in step with the visible frontier animation
+  rather than ahead of or behind it. Not verifiable headlessly in this
+  sandbox (no browser, no real rAF cadence to observe).
+- Known limitations: no keyboard-driven cell selection yet (arrow keys +
+  Enter — that's explicitly Phase 7's job, same `uiStore.selectedNodeId`
+  path this phase's mouse-click path already uses, so Phase 7 has a
+  ready-made target to write to); MetricsPanel doesn't yet show a
+  comparison table (that's post-MVP Comparison Mode, per Phase 6's own
+  original note in the phase file).
+- Decisions relevant to Phase 7: `uiStore.selectedNodeId` is the exact
+  piece of state Phase 7's keyboard grid-navigation needs to write to
+  (Enter/Space on a focused cell) — no new state plumbing required, only
+  a new *way* of calling `uiStore.selectNode()` alongside the existing
+  mouse-click path in `useGridInteraction.ts`. The "Inspect" tool concept
+  established here also means Phase 7 doesn't need to invent a new
+  selection-vs-paint distinction; it inherits this phase's own resolution
+  of that ambiguity.
 
 ### Phase 7 — Accessibility + Performance
 - Status: NOT STARTED
