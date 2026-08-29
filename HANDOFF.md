@@ -24,20 +24,22 @@ every phase — before moving to the next one, not after starting it.
 
 ## Current Status
 
-**Active phase:** Phase 7 (Accessibility + Performance) — COMPLETE.
-**Next phase to start:** Phase 8 — Testing Hardening, Polish, README, Deployment (`phases/PHASE_8_POLISH_DEPLOY.md`). This closes the MVP.
-**Blocking issues:** none.
-**Repo state:** working Vite + React + TypeScript + Vitest project. All four
-MVP pathfinding algorithms work; real playback (Phase 5); Inspector +
-Metrics (Phase 6); and now: keyboard grid navigation (arrow keys + Enter/
-Space, synced to a renderer-drawn focus ring), `prefers-reduced-motion`
-support (instant path reveal instead of progressive), a formal WCAG AA
-contrast pass on the terrain palette (all previously-failing terrain colors
-now clear 3:1 against Road), and a copyable/distinct-action seed UI ("Use
-This Seed" vs "New Random Seed"). Performance was investigated with real
-measured numbers (see `docs/performance-notes.md`) — confirmed the
-post-Phase-5 incremental-deriver fix was a genuine ~5,150x improvement at
-200×200, not just an assumed one. 227/227 tests passing.
+**Active phase:** Phase 8 (Testing Hardening, Polish, README, Deployment) — COMPLETE with two explicitly-flagged exceptions (live deployment, recorded demo video — see below). This closes the pathfinding MVP.
+**Next phase to start:** Phase 9 — Comparison Mode (post-MVP; create `phases/PHASE_9_COMPARISON_MODE.md` when picked up).
+**Blocking issues:** none for continued development. Two Phase 8 work items
+could not be completed inside this sandboxed environment (no network
+access to any static host; no screen-recording capability) — both are
+fully prepared (production build verified working standalone; a written,
+timestamped demo script provided) and left as the one remaining human
+action item. See the Phase 8 log entry below for specifics.
+**Repo state:** MVP feature-complete per requirements §31's Definition of
+Done. All four pathfinding algorithms, real playback, Inspector + Metrics,
+keyboard navigation, reduced-motion support, and a WCAG AA-audited palette
+are all in place and tested. `README.md` rewritten as the portfolio-facing
+entry point (previous planning-docs-index content preserved via a
+"Continuing development" section pointing to `HANDOFF.md`/`ARCHITECTURE.md`).
+227/227 tests passing; production build verified to serve standalone via
+`npm run preview`.
 
 ---
 
@@ -718,7 +720,118 @@ log is the project's institutional memory.
   need to rediscover this material.
 
 ### Phase 8 — Polish, README, Deployment (closes MVP)
-- Status: NOT STARTED
+- Status: COMPLETE (with two explicitly-flagged exceptions — see below)
+- **1. Test audit**: re-read every "Required Test Cases" list from Phases
+  3-4 (Phase 5's own acceptance criteria were already self-contained unit
+  tests, audited when written) against the actual test files. Confirmed
+  via direct extraction of every `it(...)` description in
+  `bfs.test.ts`/`dfs.test.ts`/`dijkstra.test.ts`/`astar.test.ts`: every
+  required case (valid path, no path, start==goal, blocked start/goal,
+  1x1/2x2/200x200 grids, multiple optimal paths, deterministic seeded
+  worlds, algorithm-specific cases like DFS's "path can be longer than
+  BFS's" and A*'s heuristic-admissibility checks) is present. Nothing
+  found missing; no new test cases needed to be added this phase.
+- **2. Visual polish pass**: added global interaction states to
+  `src/index.css` — restrained hover feedback (`filter: brightness(0.97)`
+  on real buttons, not a color/gradient change), a clear
+  `:focus-visible` ring (`2px solid #2f6b45`, matching the Start-node
+  color already established as this app's "affirmative" accent) on every
+  focusable element, and `accent-color` on the speed slider so its
+  filled-track color matches the app's palette instead of the browser
+  default blue. Audited against requirements §21/§32's explicit avoid-
+  list: confirmed no gradients, no glassmorphism, no unnecessary shadows,
+  no generic-dashboard card treatment anywhere in the existing components
+  — nothing needed removing, only the missing hover/focus states needed
+  adding. Confirmed no `outline: none` exists anywhere in the codebase
+  (would have silently broken keyboard focus visibility) before adding
+  the explicit `:focus-visible` rule.
+- **3. README.md**: rewritten at the repo root as the portfolio-facing
+  entry point, per requirements §30's exact section list (description +
+  pitch, architecture summary linking to — not duplicating —
+  `ARCHITECTURE.md`, algorithms implemented, technical challenges pulled
+  from actual phase-file "Notes/Decisions" sections, performance
+  considerations linking to `docs/performance-notes.md`, lessons learned,
+  future roadmap). The PREVIOUS `README.md` (the "Planning Docs Index"
+  used to navigate Phases 0-7) is not lost — its essential pointer
+  function is preserved via a new "Continuing development" section at the
+  bottom of the rewritten README, directing future phase work back to
+  `HANDOFF.md`/`ARCHITECTURE.md`/the `PHASE_N_*.md` files, the same
+  reading order this project itself was built in.
+  - Screenshots/GIF: **not captured** — no real browser exists in this
+    sandbox to capture them from. Flagged as a human action item, not
+    silently skipped.
+- **4. Deployment**: **NOT performed as a live deployment** — this
+  sandbox's network access is restricted to package registries and a
+  small allowlist of code-hosting domains (see the environment's network
+  configuration); no static-hosting provider (Vercel, Netlify, GitHub
+  Pages) is reachable from here, and there is no way to actually publish
+  a live URL from inside this session. This is a deliberate, stated
+  limitation, not an oversight or a silently-skipped step. What WAS done:
+  produced a real production build (`npm run build` — 65 modules,
+  succeeds cleanly) and verified it serves correctly standalone via
+  `npm run preview` (confirmed all three served assets — index.html, the
+  JS bundle, the CSS bundle — return HTTP 200). The README includes exact
+  deploy commands for Vercel/Netlify/GitHub Pages for whoever has network
+  access to actually run them.
+- **5. Demo video**: **NOT recorded** — no screen-recording capability
+  exists in this sandbox. A full 60-120s, timestamped shot-by-shot script
+  is included in the README instead (`## Demo script`), following
+  requirements §30's exact script (generate world -> BFS -> A* -> note
+  explored-node difference -> playback controls -> Inspector), adjusted
+  per Phase 6's own note to end there since Comparison Mode/Game Mode are
+  post-MVP and out of scope for this demo.
+- **Acceptance checklist** (requirements §31 MVP Definition of Done, each
+  verified against the actual current codebase/test suite, not assumed):
+  - [x] React + TypeScript + Vite project is running (`npm run dev`/`preview` verified)
+  - [x] Main UI is polished (Phase 8's own pass, above; restrained per §21/§32)
+  - [x] Interactive grid exists (Phase 2)
+  - [x] Start/end nodes can be moved (Phase 2)
+  - [x] Walls can be painted/erased (Phase 2)
+  - [x] BFS works (Phase 3, 13 tests)
+  - [x] DFS works (Phase 3, 14 tests)
+  - [x] Dijkstra works (Phase 4, 13 tests)
+  - [x] A* works (Phase 4, 20 tests)
+  - [x] Algorithms animate step-by-step (Phase 5, real PlaybackController)
+  - [x] Pause/resume works (Phase 5)
+  - [x] Step-forward works (Phase 5; step-backward also implemented, beyond the literal checklist item)
+  - [x] Reset works (Phase 5)
+  - [x] Speed control works (Phase 5; ceiling raised to 500 ev/s post-Phase-5 per user request)
+  - [x] Algorithm inspector exists (Phase 6, keyboard-navigable since Phase 7)
+  - [x] Metrics exist (Phase 6, live nodes-explored counter)
+  - [x] Random map generation exists (Phase 1/2, plus user-settable grid size added post-Phase-5)
+  - [x] Seeded generation exists (Phase 1; copy/new-seed UX added Phase 7)
+  - [x] Unit tests exist for core algorithms (227 tests total, this phase's own audit above)
+  - [ ] Production build works — **build itself: yes** (verified above); **deployed live: no**, see item 4 above
+  - [ ] Project is deployed — **not completed**, see item 4 above (environment limitation, not skipped work)
+  - [x] README is complete (this phase's item 3, above)
+- Verification:
+  - `npx tsc --noEmit` → 0 errors
+  - `npx vitest run` → 14 test files, **227 tests passing** (unchanged
+    from Phase 7 — this phase added no new test cases, since its own
+    audit found none missing)
+  - `npm run build` → succeeds (65 modules, ~185KB JS / ~58KB gzipped)
+  - `npm run preview` → verified serving the actual production build
+    standalone (index.html + JS + CSS all HTTP 200 via curl)
+- **What still needs a human**: an actual live deployment (pick a host,
+  run one of the three commands in the README, get a URL) and an actual
+  screen-recorded demo video (follow the README's script in a real
+  browser). Both are the ONLY two items on the MVP Definition of Done not
+  fully closed out by this phase, and both are blocked purely on this
+  sandbox's lack of network/recording access, not on any remaining
+  engineering work — every prerequisite (working build, working app,
+  written script) is done and verified.
+- Known limitations: none new this phase beyond what Phases 1-7 already
+  documented and carried forward (no keyboard-driven tool-selection
+  navigation beyond Tab order; overlay-fill contrast against varying
+  terrain not formally audited; Comparison Mode/Game Mode/Sorting all
+  explicitly post-MVP).
+- Decisions relevant to Phase 9: the MVP is genuinely done except for the
+  two environment-blocked items above — Phase 9 (Comparison Mode) can
+  proceed on top of a stable, tested, documented foundation. `PathfindingResult`
+  objects are already immutable per-run snapshots (ARCHITECTURE.md §4),
+  which is exactly what running "the same world through multiple
+  algorithms side by side" needs — no architectural changes anticipated
+  before Phase 9 can start cleanly.
 
 ### Phase 9 — Comparison Mode (post-MVP, not yet detailed)
 - Status: NOT PLANNED (create `phases/PHASE_9_COMPARISON_MODE.md` when this

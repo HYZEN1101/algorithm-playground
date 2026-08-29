@@ -19,8 +19,39 @@ body,
 
 body {
   font-family: system-ui, -apple-system, sans-serif;
+  color: #2c2a28;
 }
 
 button {
   font-family: inherit;
+}
+
+/*
+ * Phase 8 polish pass: interaction states for every real <button>/<input>
+ * in the app, applied globally rather than duplicated per-component —
+ * this project's buttons are plain elements with inline styles (no CSS
+ * framework, per guideline §3/§28's dependency discipline), so a shared
+ * hover/focus rule here is the one place to get this right instead of
+ * re-deriving it in every component file. Deliberately restrained
+ * (guideline §32: no gradients, no glassmorphism, no generic dashboard
+ * shadow-everywhere look) — a subtle background shift on hover, a clear
+ * but not garish focus ring, nothing more.
+ */
+button:not(:disabled):hover {
+  filter: brightness(0.97);
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+button:focus-visible,
+input:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid #2f6b45;
+  outline-offset: 2px;
+}
+
+input[type="range"] {
+  accent-color: #2c2a28;
 }
