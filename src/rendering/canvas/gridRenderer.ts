@@ -259,7 +259,14 @@ function drawMarker(
 ): void {
   const { row, col } = grid.coordOf(id);
   const { x, y } = gridToPixelCenter(row, col, metrics);
-  const r = metrics.cellSize * 0.32;
+  // Minimum radius floor (3px), not just cellSize * 0.32 — at higher grid
+  // densities (e.g. the 100x100 default in a ~600px canvas, cellSize
+  // ~6px) the proportional radius alone shrinks to ~2px, effectively an
+  // indistinguishable dot. Start/Goal are the two most important
+  // reference points on the whole grid and must stay visually findable
+  // regardless of grid size (found via a real screenshot post-Phase-8 —
+  // recorded in HANDOFF.md).
+  const r = Math.max(3, metrics.cellSize * 0.32);
 
   ctx.save();
   ctx.fillStyle = color;

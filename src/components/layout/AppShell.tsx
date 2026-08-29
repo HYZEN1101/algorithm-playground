@@ -35,7 +35,7 @@ export function AppShell() {
         }}
       >
         <strong style={{ fontSize: 15 }}>Algorithm Playground</strong>
-        <span style={{ fontSize: 12, color: "#888" }}>Phase 6 — Inspector + Metrics</span>
+        <span style={{ fontSize: 12, color: "#888" }}>Learn and understand algorithms by watching them think.</span>
       </header>
 
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>

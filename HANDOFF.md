@@ -24,7 +24,7 @@ every phase — before moving to the next one, not after starting it.
 
 ## Current Status
 
-**Active phase:** Phase 8 (Testing Hardening, Polish, README, Deployment) — COMPLETE with two explicitly-flagged exceptions (live deployment, recorded demo video — see below). This closes the pathfinding MVP.
+**Active phase:** Phase 8 (Testing Hardening, Polish, README, Deployment) — COMPLETE, plus a post-Phase-8 addendum fixing two real UI issues found in the first actual screenshots of the running app (stale "Phase 6" header label; near-invisible Start/Goal markers at default grid density). This closes the pathfinding MVP, with two explicitly-flagged exceptions (live deployment, recorded demo video — see the Phase 8 log entry below).
 **Next phase to start:** Phase 9 — Comparison Mode (post-MVP; create `phases/PHASE_9_COMPARISON_MODE.md` when picked up).
 **Blocking issues:** none for continued development. Two Phase 8 work items
 could not be completed inside this sandboxed environment (no network
@@ -832,6 +832,58 @@ log is the project's institutional memory.
   which is exactly what running "the same world through multiple
   algorithms side by side" needs — no architectural changes anticipated
   before Phase 9 can start cleanly.
+
+### Phase 8 Addendum — Real-Screenshot Polish Fixes (found post-Phase-8)
+- Status: COMPLETE. Two real, user-visible issues found from the FIRST
+  actual screenshots of the running app the user shared (this sandbox
+  still has no browser of its own — everything through Phase 8 was
+  verified via typecheck/tests/headless build/curl only). Recorded in
+  detail since, like the Phase 2 Addendum bugs, neither was catchable by
+  any automated check available in this environment.
+- **Bug 1 — stale internal phase-number label shown in the shipped UI.**
+  `AppShell.tsx`'s header literally rendered `"Phase 6 — Inspector +
+  Metrics"` as a permanent subtitle — a leftover from each phase updating
+  this string as it was built, never removed once the project moved past
+  needing it. This should have been caught during Phase 8's own polish
+  pass (explicitly checking for "looks like a school project" per
+  requirements §21) but was missed since that pass focused on CSS/
+  interaction states rather than re-reading every static string in the
+  header. **Fix**: replaced with the product's own tagline ("Learn and
+  understand algorithms by watching them think.") — the same one already
+  used at the top of `README.md` — rather than any dev/phase-tracking
+  text.
+- **Bug 2 — Start/Goal markers effectively invisible at default grid
+  density.** `drawMarker()`'s radius was purely proportional
+  (`cellSize * 0.32`) with no floor. At the default 100x100 grid in a
+  ~600px canvas (cellSize ~6px), this produced a ~2px-radius marker —
+  visually indistinguishable from a stray pixel, confirmed directly in
+  the user's screenshot. **Fix**: `const r = Math.max(3, metrics.cellSize
+  * 0.32)` — a 3px minimum radius floor, so Start/Goal (arguably the two
+  most important reference points on the entire grid) stay visually
+  findable regardless of grid size, while still scaling up proportionally
+  on larger cells as before.
+- **Not a bug, confirmed from the same screenshots**: the generated world
+  shows only Wall (black hatch) and Road (light) terrain, no Grass/Mud/
+  Water/Mountain color anywhere. This is correct, existing, documented
+  behavior — Phase 1's `randomObstacles.generate()` only ever produces
+  Wall or Road (per its own density semantics, recorded in Phase 1's
+  HANDOFF entry); Grass/Mud/Water/Mountain are only reachable via manual
+  painting with the Terrain Picker. Not a defect, just confirmed correct
+  via the screenshot rather than only in code.
+- Verification: `npx tsc --noEmit` clean; `npx vitest run` → 227/227
+  passing (unchanged — neither fix touches any tested logic, both are
+  pure rendering/copy changes); `npm run build` succeeds. No test file
+  exercises marker-drawing pixels directly (canvas pixel tests are
+  explicitly out of MVP scope per ARCHITECTURE.md §14), so this fix's
+  correctness rests on the same visual/manual verification the original
+  marker-drawing code always did — the next real-browser screenshot
+  should confirm both fixes visually.
+- Known limitation, not addressed here: this is now the SECOND time a
+  real screenshot/browser surfaced a defect zero automated check in this
+  environment could catch (after the Phase 2 Addendum's three bugs). This
+  environment's fundamental inability to run a real browser remains the
+  single biggest verification gap on this entire project — every phase's
+  "what still needs a human" section has said this, and it remains true.
 
 ### Phase 9 — Comparison Mode (post-MVP, not yet detailed)
 - Status: NOT PLANNED (create `phases/PHASE_9_COMPARISON_MODE.md` when this
