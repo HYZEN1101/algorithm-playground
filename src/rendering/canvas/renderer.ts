@@ -4,7 +4,7 @@ import type { AlgorithmEvent, NodeState } from "../../algorithms/pathfinding/typ
 import { computeCellMetrics, configureCanvasBackingStore, type CellMetrics } from "../coordinates";
 import { drawStaticLayer, drawCells } from "./gridRenderer";
 import { drawPathOverlay } from "./pathRenderer";
-import { createIncrementalNodeStateDeriver } from "../../playback/deriveNodeStates";
+import { createIncrementalNodeStateDeriver, deriveNodeStates } from "../../playback/deriveNodeStates";
 
 export interface RendererWorldSource {
   getState(): { grid: Grid; start: NodeId; goal: NodeId };
@@ -40,6 +40,14 @@ export interface RendererHandle {
    * algorithm has been run yet).
    */
   setPlaybackFrame(events: AlgorithmEvent[] | null, index: number): void;
+
+  /**
+   * Sets the keyboard-navigation focus cursor position (Phase 7,
+   * ARCHITECTURE.md §17 — "a hidden, visually-synced focus ring drawn by
+   * the renderer, since individual cells aren't DOM nodes"). Pass `null`
+   * when the canvas doesn't have keyboard focus / no cursor is active.
+   */
+  setKeyboardCursor(nodeId: NodeId | null): void;
 }
 
 // Gated behind import.meta.env.DEV per PHASE_2_CANVAS.md's acceptance
@@ -110,6 +118,26 @@ export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSo
   // exactly the "sluggish at high speed" cost this exists to avoid. See
   // createIncrementalNodeStateDeriver's own doc comment for the reasoning.
   const nodeStateDeriver = createIncrementalNodeStateDeriver();
+  let keyboardCursorId: NodeId | null = null;
+
+  // prefers-reduced-motion, read once at init and kept live via a change
+  // listener (ARCHITECTURE.md §17: "read once at renderer init"). Guarded
+  // for environments without `window`/`matchMedia` (this project's Vitest
+  // config has no jsdom, so nothing here currently runs under test, but
+  // renderer.ts has no other reason to assume a browser-shaped global
+  // beyond `document`/canvas, which it already requires unconditionally).
+  let reducedMotion = false;
+  let reducedMotionQuery: MediaQueryList | null = null;
+  const handleReducedMotionChange = () => {
+    reducedMotion = reducedMotionQuery!.matches;
+    algorithmPending = true; // re-derive the overlay under the new preference immediately
+  };
+  if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
+    reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    reducedMotion = reducedMotionQuery.matches;
+    reducedMotionQuery.addEventListener?.("change", handleReducedMotionChange);
+  }
+
   let rafHandle: number | null = null;
   let destroyed = false;
 
@@ -136,7 +164,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSo
   function drawAlgorithmOverlay(): void {
     if (!metrics) return;
     const { grid } = world.getState();
-    drawPathOverlay(algorithmOffscreenCtx!, grid, metrics, currentNodeState, currentNodeId);
+    drawPathOverlay(algorithmOffscreenCtx!, grid, metrics, currentNodeState, currentNodeId, keyboardCursorId);
   }
 
   /**
@@ -248,6 +276,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSo
     destroy(): void {
       destroyed = true;
       if (rafHandle !== null) cancelAnimationFrame(rafHandle);
+      reducedMotionQuery?.removeEventListener?.("change", handleReducedMotionChange);
     },
 
     getMetrics(): CellMetrics | null {
@@ -260,10 +289,45 @@ export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSo
         currentNodeId = null;
       } else {
         const frame = nodeStateDeriver.derive(events, index);
-        currentNodeState = frame.states;
-        currentNodeId = frame.currentNodeId;
+
+        if (reducedMotion && hasAnyPathStatus(frame.states)) {
+          // Reduced motion (ARCHITECTURE.md §17 / guideline §14): once
+          // path construction has begun, reveal the whole path instantly
+          // rather than watching it trickle in one BUILD_PATH event at a
+          // time as normal playback advances through the timeline's tail.
+          // Deliberately uses the PURE deriveNodeStates against the full
+          // timeline here, NOT the incremental cache above — jumping the
+          // incremental cache's internal index forward to events.length
+          // would corrupt it for this same playback's next (lower, still
+          // mid-exploration) index, forcing an expensive full recompute
+          // on every subsequent frame instead of only during this rare,
+          // short-lived reduced-motion tail segment.
+          currentNodeState = deriveNodeStates(events, events.length);
+          // Nothing left to highlight as "in progress" once the path is
+          // fully resolved — matches "disable node pulse" in spirit, even
+          // though this codebase never implemented a literal continuous
+          // pulse animation to begin with (see docs/accessibility-notes.md).
+          currentNodeId = null;
+        } else {
+          currentNodeState = frame.states;
+          currentNodeId = frame.currentNodeId;
+        }
       }
       algorithmPending = true;
     },
+
+    setKeyboardCursor(nodeId: NodeId | null): void {
+      if (keyboardCursorId === nodeId) return;
+      keyboardCursorId = nodeId;
+      algorithmPending = true;
+    },
   };
+}
+
+/** True if any node in `states` currently has status "path". */
+function hasAnyPathStatus(states: Map<NodeId, NodeState>): boolean {
+  for (const state of states.values()) {
+    if (state.status === "path") return true;
+  }
+  return false;
 }

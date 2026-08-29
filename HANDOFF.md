@@ -24,18 +24,20 @@ every phase — before moving to the next one, not after starting it.
 
 ## Current Status
 
-**Active phase:** Phase 6 (Inspector + Metrics) — COMPLETE.
-**Next phase to start:** Phase 7 — Accessibility + Performance (`phases/PHASE_7_ACCESSIBILITY_PERFORMANCE.md`).
+**Active phase:** Phase 7 (Accessibility + Performance) — COMPLETE.
+**Next phase to start:** Phase 8 — Testing Hardening, Polish, README, Deployment (`phases/PHASE_8_POLISH_DEPLOY.md`). This closes the MVP.
 **Blocking issues:** none.
 **Repo state:** working Vite + React + TypeScript + Vitest project. All four
-MVP pathfinding algorithms (BFS, DFS, Dijkstra, A*) are implemented and
-tested. Real playback (Phase 5) is in place, with the grid-crop and
-playback-speed bugs from the two post-Phase-5 bug-fix passes both fixed.
-The Inspector (right panel) and Metrics panel (above the playback bar) now
-exist and are live: selecting a cell with the new "Inspect" tool shows its
-algorithm-specific fields, updating in step with playback; the Metrics
-panel shows a live Nodes Explored counter plus Path Length/Cost, with
-execution time clearly separated as browser timing. 222/222 tests passing.
+MVP pathfinding algorithms work; real playback (Phase 5); Inspector +
+Metrics (Phase 6); and now: keyboard grid navigation (arrow keys + Enter/
+Space, synced to a renderer-drawn focus ring), `prefers-reduced-motion`
+support (instant path reveal instead of progressive), a formal WCAG AA
+contrast pass on the terrain palette (all previously-failing terrain colors
+now clear 3:1 against Road), and a copyable/distinct-action seed UI ("Use
+This Seed" vs "New Random Seed"). Performance was investigated with real
+measured numbers (see `docs/performance-notes.md`) — confirmed the
+post-Phase-5 incremental-deriver fix was a genuine ~5,150x improvement at
+200×200, not just an assumed one. 227/227 tests passing.
 
 ---
 
@@ -499,9 +501,6 @@ log is the project's institutional memory.
   formal performance pass if it turns out to matter at 200×200.
 
 ### Phase 6 — Inspector + Metrics
-- Status: NOT STARTED
-
-### Phase 6 — Inspector + Metrics
 - Status: COMPLETE
 - Files created: `src/state/uiStore.ts` (`selectedNodeId` + `useUIState()`,
   the same framework-agnostic-store-plus-hook pattern as `worldStore`/
@@ -602,7 +601,121 @@ log is the project's institutional memory.
   of that ambiguity.
 
 ### Phase 7 — Accessibility + Performance
-- Status: NOT STARTED
+- Status: COMPLETE
+- Files created: `docs/performance-notes.md`, `docs/accessibility-notes.md`,
+  `tests/rendering/coordinates.perf.test.ts` (loose smoke tests, not a
+  strict perf gate, per the phase file's own instruction).
+- Files modified: `src/components/controls/GenerateButton.tsx` (Copy Seed
+  button via Clipboard API with visible success/failure feedback; split
+  the old single "Generate" button into "Use This Seed" vs "New Random
+  Seed"), `src/state/uiStore.ts` (new `cursorNodeId` field, separate from
+  `selectedNodeId`), `src/components/grid/useGridInteraction.ts` (new
+  `onKeyDown`/`onFocus` handlers: arrow keys move the cursor, Enter/Space
+  commits it via the existing `selectNode()` path, focus initializes the
+  cursor to the start node), `src/components/grid/CanvasGrid.tsx` (canvas
+  is now a real Tab stop — `tabIndex`, `role="application"`, descriptive
+  `aria-label` — and subscribes to `uiStore` to push the cursor into the
+  renderer), `src/rendering/canvas/renderer.ts` (reads
+  `prefers-reduced-motion` once at init with a live change listener;
+  `setKeyboardCursor()` added to `RendererHandle`; reduced-motion path-
+  reveal logic in `setPlaybackFrame`), `src/rendering/canvas/pathRenderer.ts`
+  (draws the keyboard cursor as a distinct blue dashed square),
+  `src/rendering/canvas/theme.ts` (darkened Grass/Mud/Water/Mountain to
+  all clear 3:1 against Road; updated the documented contrast-ratio
+  comment block with real recomputed numbers),
+  `src/rendering/canvas/gridRenderer.ts` (terrain pattern stroke color
+  flipped from dark to light to stay visible against the new dark fills).
+- **Interaction model for the keyboard cursor**: a NEW piece of UI state
+  (`cursorNodeId`), deliberately kept separate from Phase 6's
+  `selectedNodeId` — moving the cursor around to explore the grid with
+  arrow keys doesn't change what the Inspector shows until Enter/Space
+  explicitly commits it. This means "where the keyboard focus currently
+  is" and "what the Inspector is currently showing" can differ, which is
+  the same distinction a real file-browser's "focused" vs "selected" item
+  makes, and avoids the Inspector's contents flickering through every cell
+  the user arrows past.
+- **Reduced-motion implementation detail worth flagging for future
+  maintainers**: the "reveal path instantly" behavior uses the PURE
+  `deriveNodeStates` against the FULL event array, not the renderer's
+  incremental cache from the earlier perf fix — deliberately, since
+  jumping the incremental cache's internal position forward to
+  `events.length` would corrupt it for the next (lower-index,
+  still-mid-exploration) frame this same playback run produces, forcing
+  an expensive full recompute on every subsequent frame instead of just
+  the brief reduced-motion tail segment. Documented in `renderer.ts`
+  itself, not just here.
+- **Contrast pass tradeoff, explicitly accepted, not hidden**: darkening
+  all four non-Road terrain colors to each individually clear 3:1 against
+  the shared light Road pushed them closer to each other in luminance —
+  their mutual contrast against EACH OTHER dropped to roughly 1.0-1.25:1.
+  Distinguishing two non-Road terrains from each other still relies
+  primarily on `TERRAIN_PATTERNS` (tufts/dots/waves/peaks), which was
+  always the intended mechanism per guideline §24 — achieving strong
+  mutual separation AND 3:1-against-Road for all four simultaneously isn't
+  possible within one cohesive palette. Recorded in both `theme.ts`'s own
+  comment block and `docs/accessibility-notes.md`.
+- **Not formally audited, explicitly flagged rather than silently
+  skipped**: the playback overlay's semi-transparent frontier/visited/path
+  fills (`pathRenderer.ts`) don't have a single well-defined WCAG contrast
+  ratio, since they're translucent over a varying terrain background
+  underneath. Every overlay state still has a non-color cue (dashed
+  border, solid border, ring shape, dashed square) independent of this gap.
+- **Real measured performance numbers** (see `docs/performance-notes.md`
+  for the full table and methodology): BFS/DFS/Dijkstra/A* all complete in
+  under 140ms at 200×200 (Node-measured, not eyeballed). More importantly,
+  confirmed with real numbers that the incremental node-state deriver
+  added in the post-Phase-5 bug-fix pass was not a marginal improvement:
+  simulating the OLD (pure, full-replay-every-call) pattern across BFS's
+  full 200×200 timeline took **~135 seconds**; the incremental version
+  does the identical work in **~26 milliseconds** — roughly 5,150x faster
+  for that specific access pattern. This closes out the exact risk
+  flagged in Phase 5's own notes ("if scrubbing feels laggy... this is the
+  first place to look") with hard numbers instead of leaving it an open
+  question.
+- **Known limitation flagged, not fixed this phase**: `pathRenderer.ts`
+  still does three full passes over the current node-state map per dirty
+  frame (frontier/visited/path) — proportional to nodes touched so far,
+  a much smaller cost than the issue above, and not the reported
+  bottleneck, so left alone per guideline §23 ("don't optimize blindly").
+  Identified as the next place to look if a real-browser check ever finds
+  stutter during large-map playback.
+- Verification:
+  - `npx tsc --noEmit` → 0 errors
+  - `npx vitest run` → 14 test files, **227 tests passing** (222 previous
+    + 5 new performance smoke tests)
+  - `npm run build` → succeeds
+  - Dev server → every new/modified module resolves (HTTP 200, no compile
+    errors): `uiStore.ts`, `renderer.ts`, `pathRenderer.ts`, `theme.ts`,
+    `gridRenderer.ts`, `CanvasGrid.tsx`, `useGridInteraction.ts`,
+    `GenerateButton.tsx`, confirmed via curl
+  - Import-boundary checks: `rendering/` still has zero imports from
+    `components/`; `renderer.ts` still has exactly one importer
+    (`CanvasGrid.tsx`); no leftover references to the old (pre-contrast-
+    fix) terrain hex colors anywhere in the codebase
+- **What still needs a human in a real browser** (cannot be verified
+  headlessly in this sandbox — no browser available at all): the seed
+  round-trip (re-entering a seed reproduces the identical grid, already
+  proven at the data layer, just needs a UI sanity check); the full
+  keyboard walkthrough end-to-end with real Tab/Arrow/Enter/Space input;
+  `prefers-reduced-motion` actually changing renderer behavior when
+  toggled at the OS level; actual paint smoothness at 200×200 during Play;
+  real device-pixel-ratio behavior on an actual high-DPR display. All
+  explicitly listed with specifics in `docs/performance-notes.md` and
+  `docs/accessibility-notes.md` rather than silently assumed to be fine.
+- Known limitations carried forward: no keyboard-driven tool-selection
+  navigation beyond ordinary Tab order (every tool button is still
+  individually keyboard-operable, just no arrow-key toolbar pattern);
+  overlay-fill contrast against varying terrain backgrounds not formally
+  audited (see above).
+- Decisions relevant to Phase 8: every accessibility/performance item this
+  phase could verify without a browser has been verified; everything it
+  couldn't is enumerated precisely in the two new docs files rather than
+  left as a vague "needs testing" note — Phase 8's polish pass should work
+  through those lists directly. The two docs files themselves
+  (`docs/performance-notes.md`, `docs/accessibility-notes.md`) are exactly
+  what Phase 8's README work item says to pull from for the "technical
+  challenges" and "performance considerations" README sections — no
+  need to rediscover this material.
 
 ### Phase 8 — Polish, README, Deployment (closes MVP)
 - Status: NOT STARTED

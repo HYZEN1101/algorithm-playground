@@ -130,8 +130,13 @@ function drawTerrainPattern(
   if (pattern === "none") return;
 
   ctx.save();
-  ctx.strokeStyle = "rgba(0, 0, 0, 0.28)";
-  ctx.fillStyle = "rgba(0, 0, 0, 0.28)";
+  // Pattern strokes are light, not dark — TERRAIN_COLORS for every
+  // non-Road terrain are now deliberately dark (Phase 7's WCAG contrast
+  // fix; see docs/accessibility-notes.md), so a dark stroke would be
+  // invisible against a dark fill. A light stroke stays visible against
+  // all of them, mirroring the wall hatch's own light-on-dark approach.
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.55)";
+  ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
   ctx.lineWidth = 1;
 
   const cx = x + size / 2;

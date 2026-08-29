@@ -1,7 +1,16 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { worldStore, useWorldState, clampGridDimension, MIN_GRID_DIMENSION, MAX_GRID_DIMENSION } from "../../state/worldStore";
 import { runStore } from "../../state/runStore";
 import { playbackController } from "../../state/playbackStore";
+
+/** Generates a fresh pseudo-random seed for the "New Random Seed" button —
+ * an ordinary (non-seeded) Math.random() call is fine here specifically,
+ * since the point of this one call is to produce an arbitrary NEW seed
+ * value to hand to the deterministic generator; nothing about world
+ * generation itself depends on this being reproducible. */
+function randomSeed(): number {
+  return Math.floor(Math.random() * 1_000_000_000);
+}
 
 export function GenerateButton() {
   const { seed, grid } = useWorldState();
@@ -11,6 +20,8 @@ export function GenerateButton() {
   // Generate (including the initial auto-generated one on load), so the
   // field always shows a copyable, currently-active seed at rest.
   const [seedInput, setSeedInput] = useState(String(seed));
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">("idle");
+  const copyStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Local editable copies of width/height, same pattern as the seed input
   // above — typing doesn't touch the store until "Resize Grid" is pressed.
@@ -28,6 +39,12 @@ export function GenerateButton() {
     setWidthInput(String(grid.width));
     setHeightInput(String(grid.height));
   }, [grid.width, grid.height]);
+
+  useEffect(() => {
+    return () => {
+      if (copyStatusTimeoutRef.current !== null) clearTimeout(copyStatusTimeoutRef.current);
+    };
+  }, []);
 
   const parsedSeed = Number(seedInput);
   const isValidSeed = Number.isFinite(parsedSeed) && seedInput.trim() !== "";
@@ -51,6 +68,27 @@ export function GenerateButton() {
     // the overlay and results text don't show stale, meaningless data.
     playbackController.load([]);
     runStore.clearResults();
+  };
+
+  const handleCopySeed = async () => {
+    try {
+      await navigator.clipboard.writeText(seedInput);
+      setCopyStatus("copied");
+    } catch {
+      // Clipboard API can fail (no permission, insecure context, etc.) —
+      // fail visibly rather than silently, per this phase's "seed is
+      // always visible and copyable" requirement: if copy genuinely
+      // didn't work, the user should know rather than assume it did.
+      setCopyStatus("error");
+    }
+    if (copyStatusTimeoutRef.current !== null) clearTimeout(copyStatusTimeoutRef.current);
+    copyStatusTimeoutRef.current = setTimeout(() => setCopyStatus("idle"), 1600);
+  };
+
+  const handleNewRandomSeed = () => {
+    const nextSeed = randomSeed();
+    setSeedInput(String(nextSeed));
+    worldStore.generateRandom(nextSeed);
   };
 
   return (
@@ -113,42 +151,82 @@ export function GenerateButton() {
       <label style={{ display: "block", fontSize: 12, color: "#555", marginBottom: 4 }} htmlFor="seed-input">
         Seed
       </label>
-      <input
-        id="seed-input"
-        type="text"
-        inputMode="numeric"
-        value={seedInput}
-        onChange={(e) => setSeedInput(e.target.value)}
-        style={{
-          width: "100%",
-          boxSizing: "border-box",
-          padding: "6px 8px",
-          marginBottom: 8,
-          borderRadius: 6,
-          border: "1px solid #ccc",
-          fontSize: 13,
-        }}
-      />
+      <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+        <input
+          id="seed-input"
+          type="text"
+          inputMode="numeric"
+          value={seedInput}
+          onChange={(e) => setSeedInput(e.target.value)}
+          aria-label="Seed"
+          style={{
+            flex: 1,
+            minWidth: 0,
+            boxSizing: "border-box",
+            padding: "6px 8px",
+            borderRadius: 6,
+            border: "1px solid #ccc",
+            fontSize: 13,
+          }}
+        />
+        <button
+          type="button"
+          onClick={handleCopySeed}
+          aria-label="Copy seed to clipboard"
+          style={{
+            flexShrink: 0,
+            padding: "6px 10px",
+            borderRadius: 6,
+            border: "1px solid #ccc",
+            background: "white",
+            fontSize: 12,
+            cursor: "pointer",
+          }}
+        >
+          {copyStatus === "copied" ? "Copied!" : copyStatus === "error" ? "Failed" : "Copy"}
+        </button>
+      </div>
+      <p style={{ fontSize: 11, color: "#999", margin: "0 0 6px" }}>
+        Entering a previously-used seed and pressing "Use This Seed" reproduces the exact same world.
+      </p>
 
-      <button
-        type="button"
-        disabled={!isValidSeed}
-        onClick={() => worldStore.generateRandom(parsedSeed)}
-        style={{
-          width: "100%",
-          padding: "8px 10px",
-          marginBottom: 6,
-          borderRadius: 6,
-          border: "1px solid #2c2a28",
-          background: isValidSeed ? "#2c2a28" : "#aaa",
-          color: "white",
-          fontSize: 13,
-          fontWeight: 600,
-          cursor: isValidSeed ? "pointer" : "not-allowed",
-        }}
-      >
-        Generate
-      </button>
+      <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+        <button
+          type="button"
+          disabled={!isValidSeed}
+          onClick={() => worldStore.generateRandom(parsedSeed)}
+          title="Regenerate the world using the seed currently typed above"
+          style={{
+            flex: 1,
+            padding: "8px 10px",
+            borderRadius: 6,
+            border: "1px solid #2c2a28",
+            background: isValidSeed ? "#2c2a28" : "#aaa",
+            color: "white",
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: isValidSeed ? "pointer" : "not-allowed",
+          }}
+        >
+          Use This Seed
+        </button>
+        <button
+          type="button"
+          onClick={handleNewRandomSeed}
+          title="Generate a brand new random seed and world"
+          style={{
+            flex: 1,
+            padding: "8px 10px",
+            borderRadius: 6,
+            border: "1px solid #ccc",
+            background: "white",
+            fontSize: 13,
+            cursor: "pointer",
+          }}
+        >
+          New Random Seed
+        </button>
+      </div>
 
       <button
         type="button"

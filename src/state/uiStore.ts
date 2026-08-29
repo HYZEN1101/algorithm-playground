@@ -11,10 +11,20 @@ import type { NodeId } from "../types/shared";
  */
 export interface UIState {
   selectedNodeId: NodeId | null;
+  /**
+   * Keyboard focus cursor position (Phase 7) — distinct from
+   * `selectedNodeId`. Arrow keys move the cursor around the grid; Enter/
+   * Space commits the cursor's current position as the Inspector
+   * selection (the same `selectNode` path mouse click already uses, per
+   * PHASE_7_ACCESSIBILITY_PERFORMANCE.md's behavior spec). Kept separate
+   * from `selectedNodeId` so moving the cursor around to explore doesn't
+   * change what the Inspector shows until the user explicitly commits.
+   */
+  cursorNodeId: NodeId | null;
 }
 
 function createUIStore() {
-  let state: UIState = { selectedNodeId: null };
+  let state: UIState = { selectedNodeId: null, cursorNodeId: null };
   const listeners = new Set<() => void>();
   const notify = () => listeners.forEach((l) => l());
 
@@ -37,6 +47,12 @@ function createUIStore() {
     clearSelection(): void {
       if (state.selectedNodeId === null) return;
       state = { ...state, selectedNodeId: null };
+      notify();
+    },
+
+    setCursor(nodeId: NodeId | null): void {
+      if (state.cursorNodeId === nodeId) return;
+      state = { ...state, cursorNodeId: nodeId };
       notify();
     },
   };

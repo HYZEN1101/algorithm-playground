@@ -26,6 +26,12 @@ const VISITED_FILL = "rgba(76, 110, 245, 0.35)";
 const PATH_FILL = "rgba(240, 173, 78, 0.75)";
 const PATH_BORDER = "rgba(120, 74, 6, 0.9)";
 const CURRENT_NODE_RING = "rgba(220, 38, 38, 0.9)";
+// Keyboard focus cursor (Phase 7): a distinct blue dashed square, visually
+// unambiguous from both the red circular current-node ring (a playback
+// concept) and the frontier's own dashed border (a status fill, drawn
+// only over frontier-status cells) — the keyboard cursor can sit over ANY
+// cell regardless of its algorithm status, including unexplored ones.
+const KEYBOARD_CURSOR_COLOR = "rgba(29, 78, 216, 0.95)";
 
 export function drawPathOverlay(
   ctx: CanvasRenderingContext2D,
@@ -33,35 +39,42 @@ export function drawPathOverlay(
   metrics: CellMetrics,
   nodeStates: Map<NodeId, NodeState> | null,
   currentNodeId: NodeId | null = null,
+  keyboardCursorId: NodeId | null = null,
 ): void {
   const canvasWidth = metrics.offsetX * 2 + metrics.cellSize * metrics.gridWidth;
   const canvasHeight = metrics.offsetY * 2 + metrics.cellSize * metrics.gridHeight;
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
-  if (!nodeStates) return;
+  if (nodeStates) {
+    // Draw order matters: frontier under visited under path, so a node
+    // that has progressed through multiple statuses always shows its most
+    // "advanced" one on top. The current-node ring is drawn last, over
+    // everything, since it marks a moment in time rather than a status.
+    for (const [id, nodeState] of nodeStates) {
+      if (nodeState.status === "frontier") {
+        drawOverlayCell(ctx, grid, id, metrics, FRONTIER_FILL, FRONTIER_BORDER, true);
+      }
+    }
+    for (const [id, nodeState] of nodeStates) {
+      if (nodeState.status === "visited") {
+        drawOverlayCell(ctx, grid, id, metrics, VISITED_FILL);
+      }
+    }
+    for (const [id, nodeState] of nodeStates) {
+      if (nodeState.status === "path") {
+        drawOverlayCell(ctx, grid, id, metrics, PATH_FILL, PATH_BORDER);
+      }
+    }
 
-  // Draw order matters: frontier under visited under path, so a node that
-  // has progressed through multiple statuses always shows its most
-  // "advanced" one on top. The current-node ring is drawn last, over
-  // everything, since it marks a moment in time rather than a status.
-  for (const [id, nodeState] of nodeStates) {
-    if (nodeState.status === "frontier") {
-      drawOverlayCell(ctx, grid, id, metrics, FRONTIER_FILL, FRONTIER_BORDER, true);
-    }
-  }
-  for (const [id, nodeState] of nodeStates) {
-    if (nodeState.status === "visited") {
-      drawOverlayCell(ctx, grid, id, metrics, VISITED_FILL);
-    }
-  }
-  for (const [id, nodeState] of nodeStates) {
-    if (nodeState.status === "path") {
-      drawOverlayCell(ctx, grid, id, metrics, PATH_FILL, PATH_BORDER);
+    if (currentNodeId !== null) {
+      drawCurrentNodeRing(ctx, grid, currentNodeId, metrics);
     }
   }
 
-  if (currentNodeId !== null) {
-    drawCurrentNodeRing(ctx, grid, currentNodeId, metrics);
+  // Keyboard cursor is independent of nodeStates/algorithm results — it
+  // must still be visible on a grid with no algorithm run yet.
+  if (keyboardCursorId !== null) {
+    drawKeyboardCursor(ctx, grid, keyboardCursorId, metrics);
   }
 }
 
@@ -105,5 +118,19 @@ function drawCurrentNodeRing(ctx: CanvasRenderingContext2D, grid: Grid, id: Node
   ctx.beginPath();
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.stroke();
+  ctx.restore();
+}
+
+function drawKeyboardCursor(ctx: CanvasRenderingContext2D, grid: Grid, id: NodeId, metrics: CellMetrics): void {
+  const { row, col } = grid.coordOf(id);
+  const { x, y } = gridToPixel(row, col, metrics);
+  const size = metrics.cellSize;
+  const inset = Math.max(1, size * 0.08);
+
+  ctx.save();
+  ctx.strokeStyle = KEYBOARD_CURSOR_COLOR;
+  ctx.lineWidth = Math.max(1.5, size * 0.1);
+  ctx.setLineDash([Math.max(2, size * 0.18), Math.max(2, size * 0.12)]);
+  ctx.strokeRect(x + inset, y + inset, size - inset * 2, size - inset * 2);
   ctx.restore();
 }

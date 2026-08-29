@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { createRenderer, type RendererHandle } from "../../rendering/canvas/renderer";
 import { worldStore } from "../../state/worldStore";
 import { playbackController } from "../../state/playbackStore";
+import { uiStore } from "../../state/uiStore";
 import { useGridInteraction } from "./useGridInteraction";
 
 /**
@@ -38,9 +39,19 @@ export function CanvasGrid() {
     pushPlaybackFrame();
     const unsubscribePlayback = playbackController.subscribe(pushPlaybackFrame);
 
+    // Keyboard focus cursor (Phase 7) — same "Canvas subscribes directly"
+    // rule as playback above, since this is a per-keypress-driven visual,
+    // not something that needs to trigger a React re-render.
+    const pushKeyboardCursor = () => {
+      renderer.setKeyboardCursor(uiStore.getState().cursorNodeId);
+    };
+    pushKeyboardCursor();
+    const unsubscribeUI = uiStore.subscribe(pushKeyboardCursor);
+
     return () => {
       unsubscribeWorld();
       unsubscribePlayback();
+      unsubscribeUI();
       renderer.destroy();
       rendererRef.current = null;
     };
@@ -78,6 +89,9 @@ export function CanvasGrid() {
     <div ref={containerRef} style={{ width: "100%", height: "100%", minHeight: 0 }}>
       <canvas
         ref={canvasRef}
+        tabIndex={0}
+        role="application"
+        aria-label="Pathfinding grid. Use arrow keys to move the cell cursor, Enter or Space to inspect the focused cell."
         style={{ width: "100%", height: "100%", display: "block", cursor, touchAction: "none" }}
         {...pointerHandlers}
       />

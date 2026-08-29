@@ -18,10 +18,10 @@ export const GRID_LINE_COLOR = "rgba(30, 27, 20, 0.10)";
 
 export const TERRAIN_COLORS: Record<TerrainType, string> = {
   [TerrainType.Road]: "#e7e2d6",
-  [TerrainType.Grass]: "#94c98d",
-  [TerrainType.Mud]: "#b08655",
-  [TerrainType.Water]: "#6fb7d9",
-  [TerrainType.Mountain]: "#867d70",
+  [TerrainType.Grass]: "#3d7a40",
+  [TerrainType.Mud]: "#7a5730",
+  [TerrainType.Water]: "#266d92",
+  [TerrainType.Mountain]: "#6e655a",
   [TerrainType.Wall]: "#2c2a28",
 };
 
@@ -76,22 +76,30 @@ export function contrastRatio(hexA: string, hexB: string): number {
 }
 
 // Actual computed contrast ratios for this palette (computed via the
-// function above, recorded here so the numbers don't silently drift from
-// reality — see HANDOFF.md's Phase 2 entry for how these were checked):
-//   Wall    vs Road        11.06 : 1   (clears 3:1 comfortably)
-//   Wall    vs background  13.01 : 1   (clears 3:1 comfortably)
-//   Start   vs Road         4.91 : 1   (clears 3:1)
-//   Goal    vs Road         6.38 : 1   (clears 3:1)
-//   Mountain vs Road        3.14 : 1   (just clears 3:1)
-//   Mud     vs Road         2.54 : 1   (DOES NOT clear 3:1 on color alone)
-//   Water   vs Road         1.72 : 1   (DOES NOT clear 3:1 on color alone)
-//   Grass   vs Road         1.48 : 1   (DOES NOT clear 3:1 on color alone)
+// function above; verified programmatically, not just by hand — see
+// docs/accessibility-notes.md for the full audit and methodology):
+//   Wall     vs Road        11.06 : 1   (clears 3:1 comfortably)
+//   Wall     vs background  13.01 : 1   (clears 3:1 comfortably)
+//   Start    vs Road         4.91 : 1   (clears 3:1)
+//   Goal     vs Road         6.38 : 1   (clears 3:1)
+//   Grass    vs Road         4.01 : 1   (clears 3:1 — Phase 7 fix, was 1.48:1)
+//   Mud      vs Road         5.02 : 1   (clears 3:1 — Phase 7 fix, was 2.54:1)
+//   Water    vs Road         4.41 : 1   (clears 3:1 — Phase 7 fix, was 1.72:1)
+//   Mountain vs Road         4.42 : 1   (clears 3:1 — Phase 7 fix, was a marginal 3.14:1)
 //
-// Known gap, not silently hidden: Grass/Water/Mud are not reliably
-// distinguishable from Road by color contrast alone for a low-vision user.
-// TERRAIN_PATTERNS above gives each of them a distinct pattern for this
-// reason (tufts/waves/dots), which is a partial mitigation, not a full fix —
-// pattern legibility itself hasn't been formally audited. The full
-// palette-level fix (if patterns prove insufficient) is explicitly Phase 7's
-// job (docs/accessibility-notes.md); recorded here rather than deferred
-// silently.
+// Phase 7 (formal WCAG AA pass, docs/accessibility-notes.md) darkened
+// Grass/Mud/Water/Mountain so every terrain now clears 3:1 against Road,
+// the shared light "neutral ground" every other terrain is visually
+// compared to. Doing this pushed the four darkened terrain colors closer
+// to each other in luminance (their MUTUAL contrast against each other is
+// now low, ~1.0-1.25:1) — this is a known, accepted tradeoff, not an
+// oversight: distinguishing one non-Road terrain from another was always
+// meant to rely primarily on TERRAIN_PATTERNS (tufts/dots/waves/peaks),
+// not color, per guideline §24's "combinations of color, icons, borders,
+// patterns" rule — pushing all four terrain colors far apart from each
+// other AND each clearing 3:1 against a shared light Road is not
+// achievable within one cohesive, restrained palette (guideline §32).
+// Pattern strokes were switched from dark to light
+// (`rgba(255,255,255,0.55)`, gridRenderer.ts) to stay visible against the
+// now-dark terrain fills — the old dark stroke color was chosen for the
+// old, lighter fills and would have been invisible against these.

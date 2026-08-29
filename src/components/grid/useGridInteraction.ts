@@ -1,4 +1,11 @@
-import { useRef, useCallback, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import {
+  useRef,
+  useCallback,
+  type PointerEvent as ReactPointerEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type FocusEvent as ReactFocusEvent,
+  type RefObject,
+} from "react";
 import { pixelToGrid, type CellMetrics } from "../../rendering/coordinates";
 import type { TerrainType } from "../../world/terrain";
 import { worldStore } from "../../state/worldStore";
@@ -24,6 +31,14 @@ export interface GridPointerHandlers {
   onPointerMove: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
   onPointerUp: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
   onPointerLeave: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
+  /** Arrow keys move the keyboard cursor; Enter/Space commits it as the
+   * Inspector selection (Phase 7, ARCHITECTURE.md §17's deferred
+   * keyboard-navigation milestone — now implemented). */
+  onKeyDown: (e: ReactKeyboardEvent<HTMLCanvasElement>) => void;
+  /** Initializes the keyboard cursor to the start node on first focus, so
+   * the focus ring is visible immediately via Tab alone, without
+   * requiring an arrow-key press first to discover where the cursor is. */
+  onFocus: (e: ReactFocusEvent<HTMLCanvasElement>) => void;
 }
 
 /**
@@ -121,10 +136,59 @@ export function useGridInteraction(
     }
   }, [canvasRef]);
 
+  const onFocus = useCallback(() => {
+    if (uiStore.getState().cursorNodeId !== null) return;
+    const { start } = worldStore.getState();
+    uiStore.setCursor(start);
+  }, []);
+
+  const onKeyDown = useCallback((e: ReactKeyboardEvent<HTMLCanvasElement>) => {
+    const { grid, start } = worldStore.getState();
+    const { cursorNodeId } = uiStore.getState();
+
+    const currentCoord = grid.coordOf(cursorNodeId ?? start);
+
+    const moveCursor = (deltaRow: number, deltaCol: number) => {
+      const nextRow = Math.min(grid.height - 1, Math.max(0, currentCoord.row + deltaRow));
+      const nextCol = Math.min(grid.width - 1, Math.max(0, currentCoord.col + deltaCol));
+      uiStore.setCursor(grid.idOf(nextRow, nextCol));
+    };
+
+    switch (e.key) {
+      case "ArrowUp":
+        e.preventDefault();
+        moveCursor(-1, 0);
+        break;
+      case "ArrowDown":
+        e.preventDefault();
+        moveCursor(1, 0);
+        break;
+      case "ArrowLeft":
+        e.preventDefault();
+        moveCursor(0, -1);
+        break;
+      case "ArrowRight":
+        e.preventDefault();
+        moveCursor(0, 1);
+        break;
+      case "Enter":
+      case " ":
+        // Space also scrolls the page by default on a focusable element —
+        // must preventDefault regardless of whether a cursor exists yet.
+        e.preventDefault();
+        uiStore.selectNode(cursorNodeId ?? start);
+        break;
+      default:
+        break;
+    }
+  }, []);
+
   return {
     onPointerDown,
     onPointerMove,
     onPointerUp: endDrag,
     onPointerLeave: endDrag,
+    onKeyDown,
+    onFocus,
   };
 }
