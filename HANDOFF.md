@@ -885,6 +885,74 @@ log is the project's institutional memory.
   single biggest verification gap on this entire project — every phase's
   "what still needs a human" section has said this, and it remains true.
 
+### Phase 8 Addendum 2 — Render Loop Ran Forever, Fixed (found from user report of "app refreshes a lot")
+- Status: COMPLETE. User reported the app "refreshes a lot" when changing
+  algorithm, generating a new seed, or resizing the world. Traced through
+  the actual code (no browser available in this sandbox to observe the
+  symptom directly) rather than guessing.
+- **Ruled out first, to narrow the search**: confirmed switching the
+  selected algorithm touches ZERO world/canvas state (`runStore.selectAlgorithm`
+  only updates `selectedAlgorithm`, nothing else) — so any visible
+  "refresh" there couldn't be a canvas redraw at all. Also confirmed both
+  Inspector/Metrics `<aside>` panels already have `overflowY: "auto"` with
+  a fixed-height parent, so their content changing height (e.g. BFS's 5
+  Inspector fields vs A*'s 7) cannot reflow the rest of the page — ruled
+  out a layout-shift explanation too.
+- **The actual bug, found in `renderer.ts`**: the render loop called
+  `requestAnimationFrame(frame)` unconditionally at the end of every
+  `frame()` call, forever, from the moment the canvas mounted — even when
+  absolutely nothing was dirty. Every single frame (60/sec, indefinitely)
+  it cleared the ENTIRE visible canvas and re-blitted both offscreen
+  layers, regardless of whether the static layer, the algorithm overlay,
+  or anything else had actually changed since the last frame. This is
+  exactly the class of bug ARCHITECTURE.md §16 warns about ("no React
+  state update per animation frame... only redrawn when the world
+  actually changes") — except that principle had only ever been applied
+  to the STATIC LAYER's own regeneration (correctly gated behind `pending`/
+  `algorithmPending` flags since Phase 2/3), never to the outer loop
+  deciding whether to run at all. A constant, unthrottled 60fps loop
+  running forever in the background is real, continuous main-thread work
+  that competes with anything else happening on the page — exactly why
+  heavier synchronous actions (regenerating a 100x100+ world, resizing,
+  even just the React re-render from switching algorithms) would visibly
+  stutter/flicker: they're landing on a main thread that's already busy
+  doing unnecessary work 60 times a second, every second, always.
+- **Fix**: the loop now idles. A new `frameScheduled` flag gates a single
+  pending `requestAnimationFrame` call; `frame()` itself no longer
+  reschedules itself. Instead, every method that actually marks something
+  dirty — `requestRedraw` (world edits), `updateSize` (container/DPR
+  resize), `setPlaybackFrame` (every playback tick), `setKeyboardCursor`
+  (focus movement) — calls a new `scheduleFrame()` to wake the loop for
+  exactly one more frame. During active Play, this still produces smooth
+  continuous animation with no change in behavior, since
+  `PlaybackController`'s own internal rAF loop calls `setPlaybackFrame()`
+  on every one of its own ticks, and each of those calls re-arms
+  `scheduleFrame()` — so the renderer now draws exactly as often as there
+  is real work to show, no more, no less, instead of unconditionally
+  forever.
+- **Honesty about verification**: there is no automated test for this fix
+  — it requires a real browser's `requestAnimationFrame`/`Canvas`, which
+  this sandboxed environment has never had access to (the same limitation
+  recorded in every prior phase's "what still needs a human" section).
+  This diagnosis is based on direct code inspection (the unconditional
+  `requestAnimationFrame(frame)` call was unambiguous in the source, not
+  inferred indirectly) rather than a symptom reproduced and then fixed —
+  it is the most concrete, defensible explanation found for the reported
+  symptom, not a guaranteed complete fix. Asked the user to re-verify
+  after rebuilding.
+- Verification: `npx tsc --noEmit` clean; `npx vitest run` → 227/227
+  passing (unchanged — no test exercises `renderer.ts` directly, since it
+  requires a real Canvas/rAF this environment's Vitest config doesn't
+  provide, consistent with every prior renderer.ts change in this
+  project); `npm run build` succeeds.
+- Known follow-up if the symptom persists after this fix: profile in a
+  real browser's Performance panel during the specific reported actions
+  (switch algorithm / new seed / resize) to see whether main-thread time
+  is still dominated by rendering work, which would point somewhere else
+  (e.g. `pathRenderer.ts`'s three-pass overlay loop, already flagged as a
+  known, deferred cost in `docs/performance-notes.md`) rather than this
+  now-fixed always-on loop.
+
 ### Phase 9 — Comparison Mode (post-MVP, not yet detailed)
 - Status: NOT PLANNED (create `phases/PHASE_9_COMPARISON_MODE.md` when this
   is picked up, following the same format as Phases 1–8)

@@ -140,6 +140,41 @@ export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSo
 
   let rafHandle: number | null = null;
   let destroyed = false;
+  // The render loop now idles instead of running forever: `frameScheduled`
+  // gates a single pending requestAnimationFrame call, and only the
+  // methods below that actually mark something dirty (requestRedraw,
+  // updateSize, setPlaybackFrame, setKeyboardCursor) call scheduleFrame()
+  // to wake it back up. Previously `frame()` unconditionally called
+  // `requestAnimationFrame(frame)` at its own end, forever, from the
+  // moment the canvas mounted — clearing and re-blitting the ENTIRE
+  // visible canvas 60 times a second even while completely idle, with
+  // nothing on screen changing at all. That's real, continuous, wasted
+  // main-thread work competing with anything else happening on the page
+  // (switching algorithms, regenerating a large world, resizing), which
+  // is very likely why those specific actions felt like "the app
+  // refreshes a lot" — a background loop burning CPU nonstop makes any
+  // simultaneous heavier work visibly janky. (Found via direct user
+  // report post-Phase-8; there is no automated test for this fix, since
+  // it requires a real browser's rAF/Canvas, which this environment
+  // doesn't have — see HANDOFF.md.)
+  let frameScheduled = false;
+
+  function scheduleFrame(): void {
+    if (frameScheduled || destroyed) return;
+    frameScheduled = true;
+    rafHandle = requestAnimationFrame(runFrame);
+  }
+
+  function runFrame(): void {
+    frameScheduled = false;
+    if (destroyed) return;
+    frame();
+    // Note: no automatic reschedule here. During active playback,
+    // PlaybackController's OWN rAF loop calls setPlaybackFrame() on every
+    // tick, and setPlaybackFrame() calls scheduleFrame() itself — so
+    // playback animation continues at exactly the pace playback ticks
+    // arrive, not a separate always-on loop racing ahead of it.
+  }
 
   function touchStaticLayer(): void {
     if (import.meta.env.DEV) {
@@ -225,16 +260,15 @@ export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSo
       ctx!.drawImage(offscreen, 0, 0);
       ctx!.drawImage(algorithmOffscreen, 0, 0); // overlay on top of terrain/walls
     }
-
-    rafHandle = requestAnimationFrame(frame);
   }
 
-  rafHandle = requestAnimationFrame(frame);
+  scheduleFrame(); // initial paint on mount
 
   return {
     requestRedraw(change?: RenderChange): void {
       if (!change || change.kind === "full") {
         pending = "full";
+        scheduleFrame();
         return;
       }
       if (change.kind === "none") return;
@@ -243,6 +277,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSo
       if (pending === "full") return; // a full redraw already supersedes this
       if (pending === null) pending = new Set<NodeId>();
       for (const id of change.ids) pending.add(id);
+      scheduleFrame();
     },
 
     updateSize(cssWidth: number, cssHeight: number, nextDpr: number): void {
@@ -271,11 +306,13 @@ export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSo
       });
       pending = "full";
       algorithmPending = true;
+      scheduleFrame();
     },
 
     destroy(): void {
       destroyed = true;
       if (rafHandle !== null) cancelAnimationFrame(rafHandle);
+      frameScheduled = false;
       reducedMotionQuery?.removeEventListener?.("change", handleReducedMotionChange);
     },
 
@@ -314,12 +351,14 @@ export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSo
         }
       }
       algorithmPending = true;
+      scheduleFrame();
     },
 
     setKeyboardCursor(nodeId: NodeId | null): void {
       if (keyboardCursorId === nodeId) return;
       keyboardCursorId = nodeId;
       algorithmPending = true;
+      scheduleFrame();
     },
   };
 }
