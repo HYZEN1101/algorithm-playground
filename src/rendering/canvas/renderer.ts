@@ -3,11 +3,22 @@ import type { NodeId } from "../../types/shared";
 import type { AlgorithmEvent, NodeState } from "../../algorithms/pathfinding/types";
 import { computeCellMetrics, configureCanvasBackingStore, type CellMetrics } from "../coordinates";
 import { drawStaticLayer, drawCells } from "./gridRenderer";
-import { drawPathOverlay } from "./pathRenderer";
+import { drawPathOverlay, type PathColor } from "./pathRenderer";
 import { createIncrementalNodeStateDeriver, deriveNodeStates } from "../../playback/deriveNodeStates";
 
 export interface RendererWorldSource {
   getState(): { grid: Grid; start: NodeId; goal: NodeId };
+}
+
+/**
+ * Optional per-renderer configuration. `pathColor` lets Comparison Mode's
+ * four simultaneous mini-canvases (Phase 9 addendum) each show a
+ * distinct, algorithm-attributable path color while sharing identical
+ * frontier/visited styling — the single main CanvasGrid omits this and
+ * keeps the original default path color unchanged.
+ */
+export interface RendererOptions {
+  pathColor?: PathColor;
 }
 
 /**
@@ -68,7 +79,7 @@ declare global {
  * canvas element and a plain (non-React) world data source, never imports
  * React. CanvasGrid.tsx is the only component allowed to construct this.
  */
-export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSource): RendererHandle {
+export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSource, options: RendererOptions = {}): RendererHandle {
   const ctx = canvas.getContext("2d");
   if (!ctx) {
     throw new Error("Failed to acquire 2D rendering context for the grid canvas");
@@ -199,7 +210,7 @@ export function createRenderer(canvas: HTMLCanvasElement, world: RendererWorldSo
   function drawAlgorithmOverlay(): void {
     if (!metrics) return;
     const { grid } = world.getState();
-    drawPathOverlay(algorithmOffscreenCtx!, grid, metrics, currentNodeState, currentNodeId, keyboardCursorId);
+    drawPathOverlay(algorithmOffscreenCtx!, grid, metrics, currentNodeState, currentNodeId, keyboardCursorId, options.pathColor);
   }
 
   /**

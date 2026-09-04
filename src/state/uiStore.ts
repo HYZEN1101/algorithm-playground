@@ -21,10 +21,18 @@ export interface UIState {
    * change what the Inspector shows until the user explicitly commits.
    */
   cursorNodeId: NodeId | null;
+  /**
+   * Whether Comparison Mode's synchronized 4-canvas animated view (Phase 9
+   * addendum) is currently shown in the main panel in place of the single
+   * CanvasGrid. Purely "what is the user currently viewing" — UI state per
+   * ARCHITECTURE.md §1, not World/Algorithm/Playback state; it doesn't
+   * affect the simulation or any algorithm run, only which view renders.
+   */
+  comparisonViewActive: boolean;
 }
 
 function createUIStore() {
-  let state: UIState = { selectedNodeId: null, cursorNodeId: null };
+  let state: UIState = { selectedNodeId: null, cursorNodeId: null, comparisonViewActive: false };
   const listeners = new Set<() => void>();
   const notify = () => listeners.forEach((l) => l());
 
@@ -53,6 +61,12 @@ function createUIStore() {
     setCursor(nodeId: NodeId | null): void {
       if (state.cursorNodeId === nodeId) return;
       state = { ...state, cursorNodeId: nodeId };
+      notify();
+    },
+
+    setComparisonView(active: boolean): void {
+      if (state.comparisonViewActive === active) return;
+      state = { ...state, comparisonViewActive: active };
       notify();
     },
   };

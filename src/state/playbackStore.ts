@@ -20,8 +20,8 @@ export const playbackController = new PlaybackController();
 // numbers changing faster than ~10/sec anyway) while still feeling live.
 const THROTTLE_MS = 100;
 
-export function usePlaybackState(): PlaybackState {
-  const [snapshot, setSnapshot] = useState<PlaybackState>(playbackController.getState());
+export function usePlaybackState(controller: PlaybackController = playbackController): PlaybackState {
+  const [snapshot, setSnapshot] = useState<PlaybackState>(controller.getState());
   const pendingRef = useRef<PlaybackState | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastFlushRef = useRef(0);
@@ -29,7 +29,7 @@ export function usePlaybackState(): PlaybackState {
   useEffect(() => {
     // Catch up in case state changed between this hook's first render and
     // the subscription below being installed.
-    setSnapshot(playbackController.getState());
+    setSnapshot(controller.getState());
 
     const flush = () => {
       timeoutRef.current = null;
@@ -40,7 +40,7 @@ export function usePlaybackState(): PlaybackState {
       }
     };
 
-    const unsubscribe = playbackController.subscribe((state) => {
+    const unsubscribe = controller.subscribe((state) => {
       pendingRef.current = state;
       const elapsed = Date.now() - lastFlushRef.current;
       if (elapsed >= THROTTLE_MS) {
@@ -54,7 +54,7 @@ export function usePlaybackState(): PlaybackState {
       unsubscribe();
       if (timeoutRef.current !== null) clearTimeout(timeoutRef.current);
     };
-  }, []);
+  }, [controller]);
 
   return snapshot;
 }

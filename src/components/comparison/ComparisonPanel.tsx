@@ -1,20 +1,25 @@
 import { useWorldState } from "../../state/worldStore";
 import { runStore, useRunState } from "../../state/runStore";
+import { uiStore, useUIState } from "../../state/uiStore";
 import { ALGORITHM_REGISTRY, ALGORITHM_NAMES } from "../../algorithms/pathfinding/registry";
 import { buildComparisonRows, findMostEfficientOptimal } from "../../algorithms/pathfinding/comparisonMetrics";
 
 /**
- * Phase 9 — Comparison Mode. Metrics-only: runs all four algorithms
+ * Phase 9 — Comparison Mode, extended by a post-Phase-9 addendum. "Run
+ * All" now does two things: (1) computes all four PathfindingResults
  * against the SAME Grid instance (no per-algorithm regeneration, per
- * ARCHITECTURE.md §4/guideline §17) and shows a side-by-side table. Does
- * NOT touch playbackController — this never animates; the existing
- * single "Run" button in AlgorithmPicker is still how you watch one
- * algorithm step through its events. See PHASE_9_COMPARISON_MODE.md for
- * the explicit non-goal (no synchronized multi-canvas playback).
+ * ARCHITECTURE.md §4/guideline §17) for this metrics table, and (2) opens
+ * ComparisonGrid — four independently-animating mini-canvases, one per
+ * algorithm, in the main panel (see ComparisonGrid.tsx/
+ * MiniAlgorithmCanvas.tsx). The original Phase 9 spec's non-goal
+ * ("no synchronized multi-canvas playback") was explicitly revisited and
+ * superseded by that follow-up work — recorded in HANDOFF.md, not just
+ * silently changed here.
  */
 export function ComparisonPanel() {
   const { results } = useRunState();
   const { grid, start, goal } = useWorldState();
+  const { comparisonViewActive } = useUIState();
 
   const rows = buildComparisonRows(results);
   const winner = findMostEfficientOptimal(rows);
@@ -22,11 +27,16 @@ export function ComparisonPanel() {
   const handleRunAll = () => {
     // Same `grid` object reference passed to every algorithm — not a
     // clone per algorithm — so all four run against the identical world.
+    // This populates the table below instantly with final numbers; the
+    // ComparisonGrid view opened below independently re-runs the same
+    // deterministic algorithms against the same grid to drive its own
+    // animated playback — same inputs, so always consistent results.
     for (const name of ALGORITHM_NAMES) {
       const { run } = ALGORITHM_REGISTRY[name];
       const result = run({ grid, start, goal, diagonals: false });
       runStore.setResult(name, result);
     }
+    uiStore.setComparisonView(true);
   };
 
   return (
@@ -53,6 +63,26 @@ export function ComparisonPanel() {
       >
         Run All
       </button>
+
+      {rows.length > 0 && !comparisonViewActive && (
+        <button
+          type="button"
+          onClick={() => uiStore.setComparisonView(true)}
+          style={{
+            width: "100%",
+            padding: "6px 10px",
+            marginBottom: 10,
+            borderRadius: 6,
+            border: "1px solid #ccc",
+            background: "white",
+            color: "#2c2a28",
+            fontSize: 12,
+            cursor: "pointer",
+          }}
+        >
+          Reopen 4-up animated view
+        </button>
+      )}
 
       {rows.length === 0 && <p style={{ fontSize: 12, color: "#999" }}>Run All to compare all four algorithms on the current map.</p>}
 

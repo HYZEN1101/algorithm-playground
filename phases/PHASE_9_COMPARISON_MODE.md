@@ -1,5 +1,14 @@
 # Phase 9 — Comparison Mode (post-MVP)
 
+> **Addendum note:** this phase's non-goal below (no synchronized
+> multi-canvas playback) was deliberately revisited shortly after this
+> phase closed, per explicit user request. See `HANDOFF.md`'s
+> "Phase 9 Addendum — Synchronized 4-Up Animated Comparison View" log
+> entry for what was built on top of this spec and why it was safe to add
+> without contradicting anything below — this file is left as-is (the
+> historical record of what Phase 9 itself shipped), not edited after the
+> fact.
+
 Prerequisite: Phases 1–8 complete (MVP closed, per `HANDOFF.md`). Read
 `ARCHITECTURE.md` §4 (immutable per-run `PathfindingResult`) and §12
 (Metrics architecture) before starting.

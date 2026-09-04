@@ -45,13 +45,19 @@ documented scope decision from Phase 0, not an oversight; see
 
 Press **Run All** (left sidebar, below the algorithm picker) to run BFS,
 DFS, Dijkstra, and A* against the *identical* grid in one action — no
-per-algorithm regeneration — and see a table of nodes explored, path cost,
-and whether each result actually matches the optimal cost found this run
-("optimal" is computed honestly per run, never hardcoded to assume BFS/
-Dijkstra/A* win and DFS loses). See `phases/PHASE_9_COMPARISON_MODE.md`
-for the full spec and its one explicit non-goal (synchronized animated
-multi-canvas playback — this is a metrics table, not four canvases ticking
-in lockstep).
+per-algorithm regeneration. This opens a synchronized 4-up view in the
+main panel: four independently-animating mini-canvases, one per algorithm,
+each labeled and drawing its final path in a distinct color (BFS blue, DFS
+purple, Dijkstra teal, A* gold), all exploring the same map simultaneously
+— the same frontier-expanding, path-drawing animation the single-canvas
+Run flow already does, just four at once. A metrics table in the sidebar
+fills in alongside it: nodes explored, path cost, and whether each result
+actually matches the optimal cost found this run ("optimal" is computed
+honestly per run, never hardcoded to assume BFS/Dijkstra/A* win and DFS
+loses). "Replay" restarts all four in lockstep; "Close" returns to the
+single canvas. See `phases/PHASE_9_COMPARISON_MODE.md` for the original
+spec and `HANDOFF.md`'s Phase 9 Addendum for how the animated view
+followed on afterward.
 
 ## Architecture
 
@@ -179,9 +185,11 @@ here's the script to record it, per requirements §30:
 4. **(65-90s)** Pause mid-run, step forward/backward a few events, click a
    frontier cell with the Inspect tool, show its live G/H/F scores in the
    Inspector.
-5. **(90-110s)** Press Run All to show Comparison Mode's table — point out
-   A*'s lower "explored" count next to BFS/Dijkstra for the identical
-   optimal cost. Mention Game Mode as what's next (see below).
+5. **(90-110s)** Press Run All — four canvases open, each animating a
+   different algorithm on the same map in a different color. Point out
+   A*'s lower "explored" count next to BFS/Dijkstra in the sidebar table
+   for the identical optimal cost. Mention Game Mode as what's next (see
+   below).
 
 ## Future roadmap
 
@@ -197,10 +205,7 @@ Explicitly deferred, in priority order per `HANDOFF.md` and
 3. **Maze/cellular-automata generators**, beyond the current random-
    obstacle generator.
 4. **Shareable-scenario URLs** (`/play?seed=...&algorithm=...`).
-5. **Synchronized animated Comparison Mode** — the current Comparison Mode
-   (Phase 9) is metrics-only by explicit design; a future phase could add
-   multiple canvases playing back in lockstep if that's wanted.
-6. Further out: Genetic Algorithm and Reinforcement Learning playgrounds.
+5. Further out: Genetic Algorithm and Reinforcement Learning playgrounds.
 
 None of these have a phase file yet — per this project's own rule
 (`Documentation Consistency Fixes — Pre-Phase-1.md` §3), a phase file gets

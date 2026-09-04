@@ -33,6 +33,17 @@ const CURRENT_NODE_RING = "rgba(220, 38, 38, 0.9)";
 // cell regardless of its algorithm status, including unexplored ones.
 const KEYBOARD_CURSOR_COLOR = "rgba(29, 78, 216, 0.95)";
 
+/** Overridable path fill/border, used by Comparison Mode (Phase 9 addendum)
+ * to give each of the four simultaneous mini-canvases a distinct path
+ * color while frontier/visited styling stays identical across all four —
+ * only the FINAL PATH is what needs to be visually attributable to a
+ * specific algorithm at a glance. Single-canvas rendering omits this and
+ * gets the original PATH_FILL/PATH_BORDER constants unchanged. */
+export interface PathColor {
+  fill: string;
+  border: string;
+}
+
 export function drawPathOverlay(
   ctx: CanvasRenderingContext2D,
   grid: Grid,
@@ -40,6 +51,7 @@ export function drawPathOverlay(
   nodeStates: Map<NodeId, NodeState> | null,
   currentNodeId: NodeId | null = null,
   keyboardCursorId: NodeId | null = null,
+  pathColor?: PathColor,
 ): void {
   const canvasWidth = metrics.offsetX * 2 + metrics.cellSize * metrics.gridWidth;
   const canvasHeight = metrics.offsetY * 2 + metrics.cellSize * metrics.gridHeight;
@@ -62,7 +74,7 @@ export function drawPathOverlay(
     }
     for (const [id, nodeState] of nodeStates) {
       if (nodeState.status === "path") {
-        drawOverlayCell(ctx, grid, id, metrics, PATH_FILL, PATH_BORDER);
+        drawOverlayCell(ctx, grid, id, metrics, pathColor?.fill ?? PATH_FILL, pathColor?.border ?? PATH_BORDER);
       }
     }
 

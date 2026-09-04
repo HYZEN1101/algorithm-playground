@@ -24,9 +24,12 @@ every phase — before moving to the next one, not after starting it.
 
 ## Current Status
 
-**Active phase:** Phase 9 (Comparison Mode) — COMPLETE. MVP (Phases 1-8)
-was already closed, with two explicitly-flagged exceptions (live
-deployment, recorded demo video — see the Phase 8 log entry below).
+**Active phase:** Phase 9 (Comparison Mode) — COMPLETE, plus a post-Phase-9
+addendum adding the synchronized 4-up animated comparison view (see that
+addendum's log entry below — it directly supersedes Phase 9's original
+"no multi-canvas playback" non-goal, per explicit user request). MVP
+(Phases 1-8) was already closed, with two explicitly-flagged exceptions
+(live deployment, recorded demo video — see the Phase 8 log entry below).
 **Next phase to start:** none currently planned. Remaining roadmap items
 (Game Mode, Sorting, maze generators, shareable-scenario URLs — see
 `README.md`'s Future Roadmap) each need their own phase file written
@@ -38,11 +41,14 @@ fully prepared (production build verified working standalone; a written,
 timestamped demo script provided) and left as the one remaining human
 action item. See the Phase 8 log entry below for specifics.
 **Repo state:** MVP feature-complete per requirements §31's Definition of
-Done, PLUS Comparison Mode (Phase 9: "Run All" + a metrics table showing
-nodes-explored/cost/optimal-or-not for all four algorithms on the same
-world). All four pathfinding algorithms, real playback, Inspector + Metrics,
-keyboard navigation, reduced-motion support, a WCAG AA-audited palette, and
-Comparison Mode are all in place and tested — 237 tests passing.
+Done, PLUS Comparison Mode (Phase 9: "Run All" now opens a synchronized
+4-up animated view — four independently-playing mini-canvases, one per
+algorithm, each labeled and colored, exploring the identical map
+simultaneously — alongside a metrics table showing nodes-explored/cost/
+optimal-or-not). All four pathfinding algorithms, real playback,
+Inspector + Metrics, keyboard navigation, reduced-motion support, a WCAG
+AA-audited palette, and Comparison Mode are all in place and tested — 237
+tests passing.
 `README.md` rewritten as the portfolio-facing entry point (previous
 planning-docs-index content preserved via a "Continuing development"
 section pointing to `HANDOFF.md`/`ARCHITECTURE.md`).
@@ -1032,14 +1038,134 @@ log is the project's institutional memory.
   All table renders sensibly and that "optimal" bolding/labeling reads
   clearly at a glance (same standing caveat as every prior phase — no
   browser available in this sandbox).
-- Known limitations: no synchronized animated side-by-side playback (see
-  the phase file's explicit non-goal) — Comparison Mode is metrics-only
-  for now; a future phase could add multi-canvas playback if wanted.
+- Known limitations: no synchronized animated side-by-side playback at the
+  time this phase closed (see the phase file's explicit non-goal) —
+  addressed by the addendum immediately below, added shortly after.
 - Decisions relevant to future phases: `ALGORITHM_REGISTRY`/`ALGORITHM_NAMES`
   in `algorithms/pathfinding/registry.ts` are now the one place that lists
   "which algorithms exist" — any future phase adding a fifth algorithm (or
   Sorting's own registry) should follow this same pattern rather than
   hardcoding a map again in a component.
+
+### Phase 9 Addendum — Synchronized 4-Up Animated Comparison View (post-Phase-9)
+- Status: COMPLETE. This directly supersedes PHASE_9_COMPARISON_MODE.md's
+  original explicit non-goal ("No synchronized animated side-by-side
+  playback... do not build multi-canvas playback this phase") — the user
+  came back and asked for exactly that, so it's now built as a follow-up,
+  not silently slipped into the original phase. Recorded here as an
+  addendum rather than editing history.
+- **What it does**: "Run All" now, in addition to populating the existing
+  metrics table, replaces the single `CanvasGrid` in the main panel with
+  four independently-animating mini-canvases — one per algorithm — each
+  running against the identical `Grid`/start/goal, each labeled, each
+  drawing its final path in a distinct color, all exploring simultaneously
+  exactly like the single-canvas Run flow already does. "Replay" restarts
+  all four in lockstep; "Close" (or a new "Reopen 4-up animated view"
+  button in the sidebar once results exist) returns to/reopens it.
+- Files created: `src/components/comparison/MiniAlgorithmCanvas.tsx` (one
+  quadrant — owns its own `PlaybackController` instance and its own
+  `createRenderer(...)` instance, runs one algorithm, animates it),
+  `src/components/comparison/ComparisonGrid.tsx` (2x2 layout host +
+  Replay/Close controls + the per-algorithm color map).
+- Files modified: `src/rendering/canvas/pathRenderer.ts` (`drawPathOverlay`
+  now takes an optional `pathColor` override; omitted = original single-
+  canvas gold, unchanged), `src/rendering/canvas/renderer.ts`
+  (`createRenderer` takes an optional third `options: { pathColor? }` arg,
+  threaded straight through to `drawPathOverlay`), `src/state/
+  playbackStore.ts` (`usePlaybackState` now accepts an optional
+  `PlaybackController` argument, defaulting to the existing global
+  singleton — so every existing call site needed zero changes, and
+  `MiniAlgorithmCanvas` can reuse the same throttled-snapshot hook for its
+  own private controller), `src/state/uiStore.ts` (new
+  `comparisonViewActive` boolean + `setComparisonView()` — genuinely UI
+  state per ARCHITECTURE.md §1, "what is the user currently viewing," not
+  World/Algorithm/Playback state), `src/components/layout/AppShell.tsx`
+  (main panel now conditionally renders `ComparisonGrid` vs `CanvasGrid`
+  based on `comparisonViewActive`), `src/components/comparison/
+  ComparisonPanel.tsx` ("Run All" now also calls
+  `uiStore.setComparisonView(true)`; added the reopen button).
+- **Why this was architecturally straightforward rather than a rewrite**:
+  neither `PlaybackController` (`playback/controller.ts`) nor
+  `createRenderer` (`rendering/canvas/renderer.ts`) were ever singletons —
+  both were already plain factories per ARCHITECTURE.md §7/§8, with the
+  *app* choosing to instantiate exactly one of each (`playbackController`
+  in `playbackStore.ts`). Four fully independent instances of both,
+  running simultaneously with zero shared mutable state, is exactly what
+  those modules were already designed to support — this addendum needed
+  zero changes to either file's core logic, only the additive
+  `pathColor`/optional-controller-argument extensions above.
+- **World handling**: each `MiniAlgorithmCanvas` receives `grid`/`start`/
+  `goal` as props (from `AppShell`'s live `useWorldState()`, passed down
+  through `ComparisonGrid`) and uses a static (non-subscribing)
+  `RendererWorldSource` — it never subscribes to `worldStore` edits mid-
+  animation. Every algorithm still runs against the identical `Grid`
+  object reference per run (ARCHITECTURE.md §4/guideline §17), matching
+  the original Phase 9 rule; this addendum only changes how the *result*
+  is displayed, not how the world is sourced.
+- **Decisions made**:
+  - **Color scheme**: BFS blue, DFS purple, Dijkstra teal, A* gold (A*
+    keeps the original single-canvas path color, since that's the
+    identity screenshots/the demo script already associate with it).
+    Frontier/visited styling is deliberately IDENTICAL across all four —
+    only the final path needs a per-algorithm visual identity; giving
+    every status its own per-algorithm color would work against
+    guideline §8/§24's "don't rely on more color than needed to
+    communicate state" restraint.
+  - **Label content**: while animating, shows `index/total events`
+    (matches the single canvas's existing step-counter pattern); once
+    complete, switches to `cost N · M explored` (or `no path`) straight
+    from that canvas's own `PathfindingResult` — never a claim like "Nx
+    faster" (guideline §16).
+  - **No shared/synchronized single index across the four controllers.**
+    Each `PlaybackController` runs at the same configured speed and starts
+    at the same moment, but they are NOT forced to stay locked to an
+    identical event index — a controller genuinely finishing sooner (e.g.
+    DFS on a map where it happens to explore fewer nodes) finishes and
+    shows its final state while the others keep animating, which is
+    honest to what's actually happening rather than artificially
+    throttling faster runs down to the slowest one.
+  - **`ComparisonPanel`'s table computation and each mini-canvas's own
+    algorithm run are two separate calls to the same deterministic
+    function** (`ALGORITHM_REGISTRY[name].run`) against the same `grid`/
+    `start`/`goal` — slightly redundant computation, but both are
+    guaranteed to produce identical `PathfindingResult`s (pure functions,
+    identical inputs), and this keeps the table available instantly while
+    the animated view is still mid-playback, rather than the table having
+    to wait for four independent animations to finish. Revisit only if
+    profiling ever shows this redundant computation matters at grid sizes
+    larger than currently supported (100x100/200x200 stress target).
+- **Commands used to verify**:
+  - `npx tsc --noEmit` → 0 errors
+  - `npx vitest run` → 15 test files, **237 tests passing**, unchanged
+    from before this addendum (no new automated tests were added for this
+    addendum — it's UI/animation/component wiring, matching this
+    project's existing stance that React Testing Library / canvas-pixel
+    tests are explicitly out of scope for MVP-style verification per
+    ARCHITECTURE.md §14; the same "needs a human in a real browser" caveat
+    applies here as it has for every other visual feature in this
+    project)
+  - `npm run build` → succeeds (70 modules, up from 68)
+  - Import-boundary grep: `algorithms/` still has zero imports of
+    `react`/`components/`/`rendering/`/`state/` (this addendum's new files
+    live under `components/comparison/`, not `algorithms/`, so the rule
+    was never at risk, but re-verified anyway)
+- What still needs a human in a real browser: visual confirmation that
+  four simultaneous rAF loops (one per mini-canvas renderer, plus one per
+  `PlaybackController`) perform acceptably together, especially at larger
+  grid sizes — this is exactly the kind of thing this sandbox's headless
+  checks cannot observe (same standing limitation noted in every prior
+  phase's HANDOFF entry). If real-browser testing finds this janky at
+  200x200, the likely first lever is reducing each mini-canvas's default
+  playback speed relative to the single-canvas default, not an
+  architecture change.
+- Known limitations: no per-mini-canvas play/pause/step controls (Replay/
+  Close are the only controls, at the ComparisonGrid level, by design —
+  keeps the UI simple; individual algorithms can still be scrubbed/stepped
+  one at a time via the existing single-canvas Run flow if that's needed).
+  The Inspector/Metrics panel/PlaybackControls at the bottom of the screen
+  still reflect the single global `playbackController`, not any of the
+  four comparison-view controllers, while the 4-up view is open — a
+  reasonable scope boundary for this addendum, not an oversight.
 
 ---
 
