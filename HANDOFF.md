@@ -1203,6 +1203,66 @@ log is the project's institutional memory.
   canvases visibly speed up/slow down together when the slider moves,
   both before and during an active 4-up playback.
 
+### Phase 9 Addendum 3 — Finish-Order Positions (1st/2nd/3rd/4th)
+- Status: COMPLETE. Direct follow-up request: "add positions, who
+  finishes first, who's second and so on."
+- **What it does**: each mini-canvas now reports to `ComparisonGrid` the
+  moment its own playback finishes (reaches its last event — the
+  animation ending, not just the underlying algorithm's computation,
+  which is already done well before playback starts). `ComparisonGrid`
+  records the arrival order and hands each canvas back a 1-based rank; a
+  small colored badge (gold/silver/bronze/slate, "1st"/"2nd"/"3rd"/"4th")
+  appears in that canvas's header the moment it finishes. A one-line
+  running summary above the grid ("1. A*   2. Dijkstra   3. BFS   4. DFS")
+  fills in live as each canvas finishes, reading "Racing…" until the
+  first one completes.
+- Files modified: `src/components/comparison/MiniAlgorithmCanvas.tsx`
+  (new `position`/`onFinish` props, a `reportedFinishRef` guard so each
+  canvas reports exactly once per run, the position badge in the header),
+  `src/components/comparison/ComparisonGrid.tsx` (owns `finishOrder`
+  state — the one place that can see across all four siblings — resets it
+  whenever a new run starts, i.e. `grid`/`start`/`goal`/`replayToken`
+  change; the running summary line).
+- **Decisions made**:
+  - **"Finishing" means the mini-canvas's own playback animation reaching
+    its last event, not algorithm computation time.** All four algorithms
+    already run synchronously to completion before any animation starts
+    (ARCHITECTURE.md §6 — this was true long before Comparison Mode
+    existed), so computation order would always just reflect
+    `ALGORITHM_NAMES` array order (bfs, dfs, dijkstra, astar) — a
+    meaningless, fixed "race." Playback-finish order is the one that
+    actually varies interestingly (event-count-driven, and — see Addendum
+    2 — kept in sync with the shared Speed slider), so that's what's
+    tracked.
+  - **Reported exactly once per run via a ref guard**, not derived purely
+    from render (`done` flips `true` and then may re-render several times
+    while `true`, e.g. from later, unrelated global-speed-sync
+    notifications) — without the guard, `onFinish` could fire more than
+    once for the same canvas in the same run.
+  - **Finish order resets on any new run**, not just Replay — a world
+    edit that changes `grid`/`start`/`goal` while the 4-up view is open
+    also invalidates any previous race result, so the reset effect
+    watches all four (`grid`, `start`, `goal`, `replayToken`), matching
+    the dependency list `MiniAlgorithmCanvas`'s own re-run effect already
+    used.
+  - **Ties are possible and left unresolved by design, not silently
+    hidden.** If two canvases' `done` transitions land in the same
+    ~100ms-throttled `usePlaybackState` tick, whichever component's React
+    effect happens to commit first claims the earlier rank — this is a
+    real (if rare) source of non-determinism in *display* order only,
+    never in the underlying algorithm results themselves, and isn't worth
+    the complexity of a true tie-detection system for a cosmetic race
+    indicator. Documented here rather than silently accepted without a
+    record.
+- **Commands used to verify**: `npx tsc --noEmit` → 0 errors; `npx vitest
+  run` → 237/237 passing, unchanged (no new automated test — like the
+  prior two addenda, this is animation-timing UI behavior, same "needs a
+  human in a real browser" standing caveat); `npm run build` → succeeds
+  (70 modules, unchanged file count — only existing files were modified).
+- What still needs a human in a real browser: visually confirm the badges
+  and summary line update at the right moments during a real animated
+  run, and that the near-tie case above doesn't look glitchy in practice.
+
 ---
 
 ## Open Questions For The Product Owner

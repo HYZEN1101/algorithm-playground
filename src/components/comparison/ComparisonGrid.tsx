@@ -1,9 +1,9 @@
 import type { CSSProperties } from "react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { Grid } from "../../world/grid";
 import type { NodeId } from "../../types/shared";
 import type { AlgorithmName } from "../../algorithms/pathfinding/types";
-import { ALGORITHM_NAMES } from "../../algorithms/pathfinding/registry";
+import { ALGORITHM_NAMES, ALGORITHM_REGISTRY } from "../../algorithms/pathfinding/registry";
 import type { PathColor } from "../../rendering/canvas/pathRenderer";
 import { MiniAlgorithmCanvas } from "./MiniAlgorithmCanvas";
 import { uiStore } from "../../state/uiStore";
@@ -38,10 +38,26 @@ interface ComparisonGridProps {
  */
 export function ComparisonGrid({ grid, start, goal }: ComparisonGridProps) {
   const [replayToken, setReplayToken] = useState(0);
+  const [finishOrder, setFinishOrder] = useState<AlgorithmName[]>([]);
+
+  // Fresh race every time a new run starts — a world edit (grid/start/
+  // goal changing) or a Replay (replayToken bumping) both mean every
+  // mini-canvas is about to reload/replay from event 0, so any previous
+  // finish order is stale.
+  useEffect(() => {
+    setFinishOrder([]);
+  }, [grid, start, goal, replayToken]);
+
+  const handleFinish = useCallback((algorithm: AlgorithmName) => {
+    // Ignore a duplicate report for an algorithm that's already recorded
+    // (shouldn't happen — MiniAlgorithmCanvas only reports once per run —
+    // but guards against a double-count if that guarantee ever slips).
+    setFinishOrder((prev) => (prev.includes(algorithm) ? prev : [...prev, algorithm]));
+  }, []);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4, flexShrink: 0 }}>
         <strong style={{ fontSize: 13 }}>Comparison Mode — all four algorithms, same map</strong>
         <div style={{ display: "flex", gap: 8 }}>
           <button type="button" onClick={() => setReplayToken((t) => t + 1)} style={buttonStyle}>
@@ -51,6 +67,12 @@ export function ComparisonGrid({ grid, start, goal }: ComparisonGridProps) {
             Close
           </button>
         </div>
+      </div>
+
+      <div style={{ fontSize: 11, color: "#888", marginBottom: 8, minHeight: 14, flexShrink: 0 }}>
+        {finishOrder.length === 0
+          ? "Racing…"
+          : finishOrder.map((name, i) => `${i + 1}. ${ALGORITHM_REGISTRY[name].label}`).join("   ")}
       </div>
 
       <div
@@ -72,6 +94,8 @@ export function ComparisonGrid({ grid, start, goal }: ComparisonGridProps) {
             goal={goal}
             pathColor={COMPARISON_COLORS[name]}
             replayToken={replayToken}
+            position={finishOrder.includes(name) ? finishOrder.indexOf(name) + 1 : undefined}
+            onFinish={handleFinish}
           />
         ))}
       </div>

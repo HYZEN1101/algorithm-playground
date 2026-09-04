@@ -17,7 +17,25 @@ interface MiniAlgorithmCanvasProps {
   /** Bumped by the parent (ComparisonGrid) to trigger a synchronized
    * replay of all four canvases from index 0, without remounting them. */
   replayToken: number;
+  /** 1-based finish rank (1 = finished first, 2 = second, ...) once this
+   * canvas's playback has completed; 0/undefined while still running or
+   * not yet started. Owned by the parent (ComparisonGrid), which is the
+   * only place that can compare completion across all four siblings. */
+  position?: number;
+  /** Called exactly once per run (mount, or each replayToken bump) the
+   * moment this canvas's own playback reaches its last event — i.e. this
+   * algorithm's animation, not just its computation, has finished. The
+   * parent uses call ORDER across all four canvases to assign 1st/2nd/
+   * 3rd/4th. */
+  onFinish: (algorithm: AlgorithmName) => void;
 }
+
+const POSITION_BADGE: Record<number, { label: string; bg: string; fg: string }> = {
+  1: { label: "1st", bg: "#f0ad4e", fg: "#3a2a00" },
+  2: { label: "2nd", bg: "#c7c7c7", fg: "#2c2a28" },
+  3: { label: "3rd", bg: "#cd8a52", fg: "#3a2200" },
+  4: { label: "4th", bg: "#e2ddd2", fg: "#666" },
+};
 
 /**
  * One quadrant of Comparison Mode's 4-up animated view (Phase 9 addendum
@@ -37,12 +55,26 @@ interface MiniAlgorithmCanvasProps {
  * or regenerates it; only `replayToken` re-triggers a run, always against
  * the same grid/start/goal props it was given.
  */
-export function MiniAlgorithmCanvas({ algorithm, grid, start, goal, pathColor, replayToken }: MiniAlgorithmCanvasProps) {
+export function MiniAlgorithmCanvas({
+  algorithm,
+  grid,
+  start,
+  goal,
+  pathColor,
+  replayToken,
+  position,
+  onFinish,
+}: MiniAlgorithmCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<RendererHandle | null>(null);
   const controllerRef = useRef<PlaybackController>(new PlaybackController());
   const [result, setResult] = useState<PathfindingResult | null>(null);
+  // Guards against reporting "finished" more than once for the same run —
+  // reset to false every time a new run starts (mount, or a replayToken
+  // bump), set to true the first time this canvas's own playback reaches
+  // its last event for that run.
+  const reportedFinishRef = useRef(false);
 
   // Renderer lifecycle: create once per mount, destroy on unmount. Static
   // world source (never subscribes to worldStore) since this canvas's
@@ -97,6 +129,7 @@ export function MiniAlgorithmCanvas({ algorithm, grid, start, goal, pathColor, r
     const { run } = ALGORITHM_REGISTRY[algorithm];
     const runResult = run({ grid, start, goal, diagonals: false });
     setResult(runResult);
+    reportedFinishRef.current = false;
     controllerRef.current.setSpeed(globalPlaybackController.getState().speed);
     controllerRef.current.load(runResult.events);
     controllerRef.current.play();
@@ -124,6 +157,18 @@ export function MiniAlgorithmCanvas({ algorithm, grid, start, goal, pathColor, r
   const total = playback.events.length;
   const progress = Math.min(playback.index, total);
   const done = total > 0 && progress >= total;
+
+  // Reports finishing exactly once per run, the first render where `done`
+  // is true — call order across the four sibling canvases (all racing
+  // independently) is what the parent uses to assign 1st/2nd/3rd/4th.
+  useEffect(() => {
+    if (done && !reportedFinishRef.current) {
+      reportedFinishRef.current = true;
+      onFinish(algorithm);
+    }
+  }, [done, algorithm, onFinish]);
+
+  const badge = position ? POSITION_BADGE[position] : undefined;
 
   return (
     <div
@@ -162,6 +207,20 @@ export function MiniAlgorithmCanvas({ algorithm, grid, start, goal, pathColor, r
             }}
           />
           {ALGORITHM_REGISTRY[algorithm].label}
+          {badge && (
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                padding: "1px 6px",
+                borderRadius: 999,
+                background: badge.bg,
+                color: badge.fg,
+              }}
+            >
+              {badge.label}
+            </span>
+          )}
         </strong>
         <span style={{ fontSize: 11, color: "#888" }}>
           {result === null
