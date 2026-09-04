@@ -2,6 +2,7 @@ import { CanvasGrid } from "../grid/CanvasGrid";
 import { TerrainPicker } from "../controls/TerrainPicker";
 import { GenerateButton } from "../controls/GenerateButton";
 import { AlgorithmPicker } from "../controls/AlgorithmPicker";
+import { ComparisonPanel } from "../comparison/ComparisonPanel";
 import { PlaybackControls } from "../controls/PlaybackControls";
 import { NodeInspector } from "../inspector/NodeInspector";
 import { MetricsPanel } from "../metrics/MetricsPanel";
@@ -53,6 +54,8 @@ export function AppShell() {
           <GenerateButton />
           <div style={{ height: 20 }} />
           <AlgorithmPicker />
+          <div style={{ height: 20 }} />
+          <ComparisonPanel />
         </aside>
 
         <main style={{ flex: 1, minWidth: 0, padding: 16 }}>

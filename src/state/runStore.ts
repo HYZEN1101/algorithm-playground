@@ -1,12 +1,15 @@
 import { useSyncExternalStore } from "react";
-import type { PathfindingResult } from "../algorithms/pathfinding/types";
+import type { PathfindingResult, AlgorithmName } from "../algorithms/pathfinding/types";
 
 /**
- * Extended in Phase 4 to include "dijkstra" | "astar" — Phase 3 originally
- * left this as "bfs" | "dfs" only, deliberately not guessing at the shape
- * Phase 4 would want.
+ * Re-exported for backwards compatibility — every existing import of
+ * `AlgorithmName` from this module (AlgorithmPicker, etc.) keeps working
+ * unchanged. The type itself now lives in algorithms/pathfinding/types.ts
+ * (see Phase 9's HANDOFF entry): algorithms/ code (registry.ts,
+ * comparisonMetrics.ts) needs this type too, and algorithms/ must never
+ * import from state/.
  */
-export type AlgorithmName = "bfs" | "dfs" | "dijkstra" | "astar";
+export type { AlgorithmName };
 
 export interface RunState {
   /** The currently selected algorithm in the temporary AlgorithmPicker UI. */

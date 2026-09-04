@@ -64,3 +64,15 @@ export interface PathfindingResult {
 }
 
 export type PathfindingAlgorithm = (input: PathfindingInput) => PathfindingResult;
+
+/**
+ * Which pathfinding algorithm. Originally defined in state/runStore.ts
+ * (Phase 3/4), but Phase 9's algorithm registry/comparison-metrics code
+ * lives under algorithms/ and needs this type — importing it from
+ * state/ would violate the strict "algorithms never import from state"
+ * rule enforced every phase. Moved here since the type is fundamentally
+ * about "which pathfinding algorithm exists," not about React/store
+ * state; runStore.ts re-exports it unchanged so nothing importing it
+ * from there needs to change.
+ */
+export type AlgorithmName = "bfs" | "dfs" | "dijkstra" | "astar";

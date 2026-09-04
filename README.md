@@ -9,9 +9,11 @@ around, then watch BFS, DFS, Dijkstra, and A* explore the map step by step
 full playback control (play/pause/step/reset/speed) and a live Inspector
 showing exactly what each algorithm knows about any cell at any moment.
 
-This is the pathfinding MVP described in `algorithm-playground-requirements.md`.
-Sorting, Game Mode, Genetic Algorithms, Reinforcement Learning, and
-Algorithm Comparison Mode are deliberately out of scope for this MVP (see
+This is the pathfinding MVP described in `algorithm-playground-requirements.md`,
+now extended with Comparison Mode (Phase 9): run all four algorithms on
+the same map with one click and see nodes-explored/cost/optimal-or-not
+side by side. Sorting, Game Mode, Genetic Algorithms, and Reinforcement
+Learning remain deliberately out of scope (see
 [Future Roadmap](#future-roadmap) below) — the guiding principle throughout
 this build has been: **make the pathfinding experience genuinely solid
 before adding anything else**, per `ENGINEERING_GUIDELINES.md` §35.
@@ -21,7 +23,7 @@ before adding anything else**, per `ENGINEERING_GUIDELINES.md` §35.
 ```bash
 npm install
 npm run dev       # dev server, http://localhost:5173
-npm test          # 227 tests, Vitest
+npm test          # 237 tests, Vitest
 npm run build     # production build -> dist/
 npm run preview   # serve the production build locally
 ```
@@ -38,6 +40,18 @@ npm run preview   # serve the production build locally
 Movement is 4-directional only in this MVP (no diagonals) — a deliberate,
 documented scope decision from Phase 0, not an oversight; see
 `ARCHITECTURE.md`'s Ambiguities section.
+
+## Comparison Mode
+
+Press **Run All** (left sidebar, below the algorithm picker) to run BFS,
+DFS, Dijkstra, and A* against the *identical* grid in one action — no
+per-algorithm regeneration — and see a table of nodes explored, path cost,
+and whether each result actually matches the optimal cost found this run
+("optimal" is computed honestly per run, never hardcoded to assume BFS/
+Dijkstra/A* win and DFS loses). See `phases/PHASE_9_COMPARISON_MODE.md`
+for the full spec and its one explicit non-goal (synchronized animated
+multi-canvas playback — this is a metrics table, not four canvases ticking
+in lockstep).
 
 ## Architecture
 
@@ -165,25 +179,27 @@ here's the script to record it, per requirements §30:
 4. **(65-90s)** Pause mid-run, step forward/backward a few events, click a
    frontier cell with the Inspect tool, show its live G/H/F scores in the
    Inspector.
-5. **(90-110s)** Bump the speed slider, show a fast full run. Mention
-   Comparison Mode and Game Mode as what's next (see below).
+5. **(90-110s)** Press Run All to show Comparison Mode's table — point out
+   A*'s lower "explored" count next to BFS/Dijkstra for the identical
+   optimal cost. Mention Game Mode as what's next (see below).
 
 ## Future roadmap
 
-Explicitly deferred, in priority order per `HANDOFF.md`'s Phase 9 note and
+Explicitly deferred, in priority order per `HANDOFF.md` and
 `algorithm-playground-requirements.md`:
 
-1. **Comparison Mode** (Phase 9) — run two or more algorithms on the same
-   world side by side.
-2. **Game Mode** — the same world/algorithm systems, wrapped in objectives,
+1. **Game Mode** — the same world/algorithm systems, wrapped in objectives,
    entities (keys, doors, enemies, hazards), and scenarios (Escape,
    Treasure, Dangerous Terrain, Enemy, Multi-target, Limited Resources).
-3. **Sorting Playground** — a separate mode (bubble/selection/insertion/
+2. **Sorting Playground** — a separate mode (bubble/selection/insertion/
    merge/quick/heap sort), reusing the same event-timeline/playback
    architecture this pathfinding MVP already built.
-4. **Maze/cellular-automata generators**, beyond the current random-
+3. **Maze/cellular-automata generators**, beyond the current random-
    obstacle generator.
-5. **Shareable-scenario URLs** (`/play?seed=...&algorithm=...`).
+4. **Shareable-scenario URLs** (`/play?seed=...&algorithm=...`).
+5. **Synchronized animated Comparison Mode** — the current Comparison Mode
+   (Phase 9) is metrics-only by explicit design; a future phase could add
+   multiple canvases playing back in lockstep if that's wanted.
 6. Further out: Genetic Algorithm and Reinforcement Learning playgrounds.
 
 None of these have a phase file yet — per this project's own rule
@@ -193,8 +209,8 @@ created when that work is actually picked up, not speculatively in advance.
 ## Continuing development
 
 This README is the portfolio-facing entry point (requirements §30). If
-you're picking this project back up to build the next phase (Comparison
-Mode, Game Mode, etc.), start with `HANDOFF.md` instead — it has the exact
+you're picking this project back up to build the next phase (Game Mode,
+Sorting, etc.), start with `HANDOFF.md` instead — it has the exact
 current status, a full phase-by-phase log of every decision and deviation,
 and points to `ARCHITECTURE.md` (interfaces/folder structure/source of
 truth) and the individual `PHASE_N_*.md` files (self-contained specs per

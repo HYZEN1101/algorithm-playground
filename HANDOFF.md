@@ -24,8 +24,13 @@ every phase — before moving to the next one, not after starting it.
 
 ## Current Status
 
-**Active phase:** Phase 8 (Testing Hardening, Polish, README, Deployment) — COMPLETE, plus a post-Phase-8 addendum fixing two real UI issues found in the first actual screenshots of the running app (stale "Phase 6" header label; near-invisible Start/Goal markers at default grid density). This closes the pathfinding MVP, with two explicitly-flagged exceptions (live deployment, recorded demo video — see the Phase 8 log entry below).
-**Next phase to start:** Phase 9 — Comparison Mode (post-MVP; create `phases/PHASE_9_COMPARISON_MODE.md` when picked up).
+**Active phase:** Phase 9 (Comparison Mode) — COMPLETE. MVP (Phases 1-8)
+was already closed, with two explicitly-flagged exceptions (live
+deployment, recorded demo video — see the Phase 8 log entry below).
+**Next phase to start:** none currently planned. Remaining roadmap items
+(Game Mode, Sorting, maze generators, shareable-scenario URLs — see
+`README.md`'s Future Roadmap) each need their own phase file written
+before any code, per this project's own rule, once picked up.
 **Blocking issues:** none for continued development. Two Phase 8 work items
 could not be completed inside this sandboxed environment (no network
 access to any static host; no screen-recording capability) — both are
@@ -33,11 +38,14 @@ fully prepared (production build verified working standalone; a written,
 timestamped demo script provided) and left as the one remaining human
 action item. See the Phase 8 log entry below for specifics.
 **Repo state:** MVP feature-complete per requirements §31's Definition of
-Done. All four pathfinding algorithms, real playback, Inspector + Metrics,
-keyboard navigation, reduced-motion support, and a WCAG AA-audited palette
-are all in place and tested. `README.md` rewritten as the portfolio-facing
-entry point (previous planning-docs-index content preserved via a
-"Continuing development" section pointing to `HANDOFF.md`/`ARCHITECTURE.md`).
+Done, PLUS Comparison Mode (Phase 9: "Run All" + a metrics table showing
+nodes-explored/cost/optimal-or-not for all four algorithms on the same
+world). All four pathfinding algorithms, real playback, Inspector + Metrics,
+keyboard navigation, reduced-motion support, a WCAG AA-audited palette, and
+Comparison Mode are all in place and tested — 237 tests passing.
+`README.md` rewritten as the portfolio-facing entry point (previous
+planning-docs-index content preserved via a "Continuing development"
+section pointing to `HANDOFF.md`/`ARCHITECTURE.md`).
 227/227 tests passing; production build verified to serve standalone via
 `npm run preview`.
 
@@ -953,9 +961,85 @@ log is the project's institutional memory.
   known, deferred cost in `docs/performance-notes.md`) rather than this
   now-fixed always-on loop.
 
-### Phase 9 — Comparison Mode (post-MVP, not yet detailed)
-- Status: NOT PLANNED (create `phases/PHASE_9_COMPARISON_MODE.md` when this
-  is picked up, following the same format as Phases 1–8)
+### Phase 9 — Comparison Mode
+- Status: COMPLETE
+- Spec written first, per this project's own rule: `phases/PHASE_9_COMPARISON_MODE.md`,
+  scoped deliberately to a metrics-only comparison table — explicitly
+  non-goaling synchronized animated multi-canvas playback (a much larger
+  architecture change not needed for requirements §11's actual point).
+- Files created: `src/algorithms/pathfinding/registry.ts` (shared
+  `{label, run}` map, extracted from `AlgorithmPicker.tsx` so it and the
+  new `ComparisonPanel.tsx` can't drift apart), `src/algorithms/pathfinding/
+  comparisonMetrics.ts` (pure `buildComparisonRows`/`findMostEfficientOptimal`),
+  `src/components/comparison/ComparisonPanel.tsx` ("Run All" + table),
+  `tests/algorithms/comparisonMetrics.test.ts`.
+- Files modified: `src/components/controls/AlgorithmPicker.tsx` (now
+  imports `ALGORITHM_REGISTRY`/`ALGORITHM_NAMES` instead of defining its
+  own copy of the algorithm map), `src/components/layout/AppShell.tsx`
+  (mounts `ComparisonPanel` in the left sidebar below `AlgorithmPicker`),
+  `src/algorithms/pathfinding/types.ts` (now defines `AlgorithmName` — see
+  next bullet), `src/state/runStore.ts` (re-exports `AlgorithmName` from
+  its new location instead of defining it).
+- **Import-boundary violation caught and fixed before it happened**:
+  `AlgorithmName` originally lived in `state/runStore.ts` (Phase 3/4). The
+  new `registry.ts`/`comparisonMetrics.ts` files live under `algorithms/`
+  and need this type — importing it from `state/` would have broken the
+  strict, every-phase-enforced "`algorithms/` never imports from `state/`"
+  rule. Fixed at the source: moved `AlgorithmName`'s definition into
+  `algorithms/pathfinding/types.ts` (it's fundamentally about "which
+  pathfinding algorithm exists," not about React/store state) and had
+  `runStore.ts` re-export it unchanged, so every existing import site
+  (`AlgorithmPicker`, etc.) needed zero changes.
+- **Decisions made**:
+  - **"Optimal" grouped by `pathCost`, never `pathLength`** — consistent
+    with guideline §8's cost-vs-length distinction; a row is optimal iff
+    it found a path AND its cost equals the minimum cost among all
+    `pathFound: true` results in that run.
+  - **No algorithm is hardcoded as never-optimal.** Verified with a
+    dedicated test (`"does not hardcode DFS as never-optimal"`) that
+    constructs a fixture where DFS's cost ties the minimum and confirms
+    `isOptimal` is still honestly `true` — the logic groups by cost value,
+    it never special-cases by algorithm name.
+  - **`findMostEfficientOptimal` returns `null`, not a crash or a false
+    winner, when nothing found a path** — tested directly (empty row set
+    and all-`pathFound:false` cases both covered).
+  - **Same `Grid` object reference used for all four algorithms in "Run
+    All"**, never a per-algorithm regenerate/clone — per ARCHITECTURE.md
+    §4 and guideline §17 ("do not regenerate the world independently for
+    each algorithm"). Verified directly in
+    `tests/algorithms/comparisonMetrics.test.ts` via strict reference
+    equality (`seenGrids.every(g => g === grid)`), not just asserted in
+    prose.
+  - **Comparison Mode never touches `playbackController`** — it's a
+    metrics-only summary table; the existing single "Run" button (loads
+    events into the controller and animates) remains the only way to
+    *watch* an individual algorithm step through its events. Confirmed via
+    code review: `ComparisonPanel.tsx` has no import of
+    `state/playbackStore`.
+  - **`ComparisonPanel`'s "Run All" reuses `runStore.setResult` per
+    algorithm** — additive on top of the existing store, not a parallel
+    comparison-specific store, so the single-Run flow, Inspector, and
+    Metrics panel all keep working unchanged and see the same latest
+    results Comparison Mode just wrote.
+- **Commands used to verify**:
+  - `npx tsc --noEmit` → 0 errors
+  - `npx vitest run` → 15 test files, **237 tests passing** (227 from
+    Phases 1–8 unchanged + 10 new)
+  - `npm run build` → succeeds (68 modules, up from 65)
+  - Import-boundary grep: `algorithms/` still has zero imports of
+    `react`/`components/`/`rendering/`/`state/`
+- What still needs a human in a real browser: visual check that the Run
+  All table renders sensibly and that "optimal" bolding/labeling reads
+  clearly at a glance (same standing caveat as every prior phase — no
+  browser available in this sandbox).
+- Known limitations: no synchronized animated side-by-side playback (see
+  the phase file's explicit non-goal) — Comparison Mode is metrics-only
+  for now; a future phase could add multi-canvas playback if wanted.
+- Decisions relevant to future phases: `ALGORITHM_REGISTRY`/`ALGORITHM_NAMES`
+  in `algorithms/pathfinding/registry.ts` are now the one place that lists
+  "which algorithms exist" — any future phase adding a fifth algorithm (or
+  Sorting's own registry) should follow this same pattern rather than
+  hardcoding a map again in a component.
 
 ---
 

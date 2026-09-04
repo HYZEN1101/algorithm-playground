@@ -1,11 +1,7 @@
 import { useWorldState } from "../../state/worldStore";
-import { runStore, useRunState, type AlgorithmName } from "../../state/runStore";
+import { runStore, useRunState } from "../../state/runStore";
 import { playbackController } from "../../state/playbackStore";
-import { bfs } from "../../algorithms/pathfinding/bfs";
-import { dfs } from "../../algorithms/pathfinding/dfs";
-import { dijkstra } from "../../algorithms/pathfinding/dijkstra";
-import { astar } from "../../algorithms/pathfinding/astar";
-import type { PathfindingAlgorithm } from "../../algorithms/pathfinding/types";
+import { ALGORITHM_REGISTRY, ALGORITHM_NAMES } from "../../algorithms/pathfinding/registry";
 
 /**
  * "Run" now means what PHASE_5_PLAYBACK.md specifies: execute the selected
@@ -22,13 +18,6 @@ import type { PathfindingAlgorithm } from "../../algorithms/pathfinding/types";
  * A dropdown with exactly one option would be dead UI.
  */
 
-const ALGORITHMS: Record<AlgorithmName, { label: string; run: PathfindingAlgorithm }> = {
-  bfs: { label: "BFS", run: bfs },
-  dfs: { label: "DFS", run: dfs },
-  dijkstra: { label: "Dijkstra", run: dijkstra },
-  astar: { label: "A*", run: astar },
-};
-
 export function AlgorithmPicker() {
   const { selectedAlgorithm, results } = useRunState();
   const { grid, start, goal } = useWorldState();
@@ -36,7 +25,7 @@ export function AlgorithmPicker() {
   const currentResult = results[selectedAlgorithm];
 
   const handleRun = () => {
-    const { run } = ALGORITHMS[selectedAlgorithm];
+    const { run } = ALGORITHM_REGISTRY[selectedAlgorithm];
     const result = run({ grid, start, goal, diagonals: false });
     runStore.setResult(selectedAlgorithm, result);
     playbackController.load(result.events);
@@ -49,7 +38,7 @@ export function AlgorithmPicker() {
         Algorithm
       </h2>
 
-      {(Object.keys(ALGORITHMS) as AlgorithmName[]).map((name) => {
+      {ALGORITHM_NAMES.map((name) => {
         const selected = name === selectedAlgorithm;
         return (
           <label
@@ -74,7 +63,7 @@ export function AlgorithmPicker() {
               onChange={() => runStore.selectAlgorithm(name)}
               style={{ marginRight: 8 }}
             />
-            {ALGORITHMS[name].label}
+            {ALGORITHM_REGISTRY[name].label}
           </label>
         );
       })}
