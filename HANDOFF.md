@@ -1167,6 +1167,42 @@ log is the project's institutional memory.
   four comparison-view controllers, while the 4-up view is open — a
   reasonable scope boundary for this addendum, not an oversight.
 
+### Phase 9 Addendum 2 — Comparison View Ignored the Speed Slider, Fixed
+- Status: COMPLETE. Found via direct user report ("the comparison mode is
+  unaffected by the evolution speed, make sure it syncs up") immediately
+  after the addendum above shipped.
+- **Root cause**: each `MiniAlgorithmCanvas` correctly owns its own
+  `PlaybackController` instance (by design — see the addendum above), but
+  a fresh `PlaybackController` defaults to `speed: 10` events/sec
+  (`playback/controller.ts`'s constructor) and nothing ever told it about
+  the main Speed slider's value, which only ever calls `setSpeed` on the
+  single global `playbackController` (`PlaybackControls.tsx`). The four
+  mini-canvases were animating at a fixed default pace no matter where the
+  slider was set.
+- **Fix**: `MiniAlgorithmCanvas.tsx` now (1) reads
+  `globalPlaybackController.getState().speed` and applies it via its own
+  controller's `setSpeed()` at the moment each run starts, and (2)
+  subscribes to the global controller for the mini-canvas's entire mounted
+  lifetime, re-applying that speed on every global-controller notification
+  — so moving the slider while the 4-up view is already open takes effect
+  immediately on all four, matching PHASE_5_PLAYBACK.md's existing rule
+  ("changing speed while playing takes effect immediately, not on next
+  play"), which previously only applied to the single canvas.
+  Deliberately still **not** a shared/merged controller — each mini-canvas
+  keeps its own independent event index (per the first addendum's
+  decision that a controller finishing sooner shouldn't be artificially
+  throttled to match the others); only the *speed value* is kept in
+  lockstep with the main slider, nothing else.
+- Files modified: `src/components/comparison/MiniAlgorithmCanvas.tsx` only.
+- **Commands used to verify**: `npx tsc --noEmit` → 0 errors; `npx vitest
+  run` → 237/237 passing, unchanged (no new automated test — this is a
+  live-sync timing behavior best confirmed by moving the slider with a
+  real browser open, same standing "needs a human" caveat as the rest of
+  this addendum); `npm run build` → succeeds.
+- What still needs a human in a real browser: visually confirm all four
+  canvases visibly speed up/slow down together when the slider moves,
+  both before and during an active 4-up playback.
+
 ---
 
 ## Open Questions For The Product Owner

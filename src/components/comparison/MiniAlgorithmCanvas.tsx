@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createRenderer, type RendererHandle, type RendererWorldSource } from "../../rendering/canvas/renderer";
 import { PlaybackController } from "../../playback/controller";
-import { usePlaybackState } from "../../state/playbackStore";
+import { playbackController as globalPlaybackController, usePlaybackState } from "../../state/playbackStore";
 import type { Grid } from "../../world/grid";
 import type { NodeId } from "../../types/shared";
 import type { AlgorithmName, PathfindingResult } from "../../algorithms/pathfinding/types";
@@ -90,15 +90,35 @@ export function MiniAlgorithmCanvas({ algorithm, grid, start, goal, pathColor, r
   // Runs the algorithm and (re)starts playback: on first mount, and again
   // whenever the parent bumps replayToken (its "Replay" button) — always
   // against the same grid/start/goal this canvas was given, never a
-  // regenerated world.
+  // regenerated world. Speed starts synced to whatever the main Speed
+  // slider is currently set to (see the sync effect below for keeping it
+  // synced live, not just at this starting moment).
   useEffect(() => {
     const { run } = ALGORITHM_REGISTRY[algorithm];
     const runResult = run({ grid, start, goal, diagonals: false });
     setResult(runResult);
+    controllerRef.current.setSpeed(globalPlaybackController.getState().speed);
     controllerRef.current.load(runResult.events);
     controllerRef.current.play();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [algorithm, grid, start, goal, replayToken]);
+
+  // Keeps this mini-canvas's own PlaybackController speed synced to the
+  // main Speed slider (which drives the single global playbackController)
+  // for the entire time this canvas is mounted — not just at the moment
+  // above when the run starts. Without this, moving the slider while the
+  // 4-up view is open only affected the (currently hidden) single canvas,
+  // which is exactly the desync the user reported. Each mini-canvas still
+  // owns its own PlaybackController/index — only the speed value is kept
+  // in lockstep, per PHASE_5_PLAYBACK.md's rule that a speed change take
+  // effect immediately, not on next play.
+  useEffect(() => {
+    const syncSpeed = () => {
+      controllerRef.current.setSpeed(globalPlaybackController.getState().speed);
+    };
+    syncSpeed();
+    return globalPlaybackController.subscribe(syncSpeed);
+  }, []);
 
   const playback = usePlaybackState(controllerRef.current);
   const total = playback.events.length;
