@@ -15,7 +15,7 @@ import { gameStore, useGameState } from "../../state/gameStore";
 export function GamePanel() {
   const { grid, start, goal } = useWorldState();
   const { selectedAlgorithm } = useRunState();
-  const { gameViewActive } = useUIState();
+  const { mainView } = useUIState();
   const { path, noRoute } = useGameState();
 
   const handleStart = () => {
@@ -23,7 +23,7 @@ export function GamePanel() {
     const result = run({ grid, start, goal, diagonals: false });
     if (result.pathFound) {
       gameStore.startEscape(result.path);
-      uiStore.setGameView(true);
+      uiStore.setMainView("game");
     } else {
       gameStore.reportNoRoute();
     }
@@ -62,10 +62,10 @@ export function GamePanel() {
         <p style={{ fontSize: 12, color: "#b91c1c", margin: "0 0 8px" }}>No route to the exit — the player is trapped.</p>
       )}
 
-      {path && !gameViewActive && (
+      {path && mainView !== "game" && (
         <button
           type="button"
-          onClick={() => uiStore.setGameView(true)}
+          onClick={() => uiStore.setMainView("game")}
           style={{
             width: "100%",
             padding: "6px 10px",

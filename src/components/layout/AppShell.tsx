@@ -1,11 +1,13 @@
 import { CanvasGrid } from "../grid/CanvasGrid";
 import { ComparisonGrid } from "../comparison/ComparisonGrid";
 import { GameView } from "../game/GameView";
+import { ChaseView } from "../game/ChaseView";
 import { TerrainPicker } from "../controls/TerrainPicker";
 import { GenerateButton } from "../controls/GenerateButton";
 import { AlgorithmPicker } from "../controls/AlgorithmPicker";
 import { ComparisonPanel } from "../comparison/ComparisonPanel";
 import { GamePanel } from "../game/GamePanel";
+import { ChasePanel } from "../game/ChasePanel";
 import { PlaybackControls } from "../controls/PlaybackControls";
 import { NodeInspector } from "../inspector/NodeInspector";
 import { MetricsPanel } from "../metrics/MetricsPanel";
@@ -16,17 +18,17 @@ import { useUIState } from "../../state/uiStore";
  * Conceptual 3-panel layout from ARCHITECTURE.md §9: left = algorithm/
  * settings panel, center = CanvasGrid, right = NodeInspector (Phase 6).
  * Bottom bar hosts PlaybackControls (Phase 5) and, above it, MetricsPanel
- * (Phase 6). Phase 9 addendum: the center panel swaps to ComparisonGrid's
- * synchronized 4-up animated view while `comparisonViewActive` is set —
- * driven by ComparisonPanel's "Run All" button in the left sidebar.
- * Phase 10: a third alternate view, GameView, swaps in while
- * `gameViewActive` is set — driven by GamePanel's "Start Escape" button.
- * The two alternate views are mutually exclusive (uiStore enforces this),
- * so this is a plain three-way switch, never two views at once.
+ * (Phase 6). Three alternate main-panel views can swap in for CanvasGrid,
+ * driven by `uiStore.mainView` (refactored from two/would-be-three
+ * separate booleans into one discriminated field in Phase 11 — see
+ * uiStore.ts): ComparisonGrid (Phase 9, "Run All"), GameView (Phase 10,
+ * "Start Escape"), and ChaseView (Phase 11, "Start Chase"). Exactly one
+ * of the four is ever mounted — `setMainView` enforces this by
+ * construction, not by each component remembering to close the others.
  */
 export function AppShell() {
   const { grid, start, goal } = useWorldState();
-  const { comparisonViewActive, gameViewActive } = useUIState();
+  const { mainView } = useUIState();
 
   return (
     <div
@@ -72,12 +74,16 @@ export function AppShell() {
           <ComparisonPanel />
           <div style={{ height: 20 }} />
           <GamePanel />
+          <div style={{ height: 20 }} />
+          <ChasePanel />
         </aside>
 
         <main style={{ flex: 1, minWidth: 0, padding: 16 }}>
-          {gameViewActive ? (
+          {mainView === "chase" ? (
+            <ChaseView grid={grid} start={start} goal={goal} />
+          ) : mainView === "game" ? (
             <GameView grid={grid} start={start} goal={goal} />
-          ) : comparisonViewActive ? (
+          ) : mainView === "comparison" ? (
             <ComparisonGrid grid={grid} start={start} goal={goal} />
           ) : (
             <CanvasGrid />

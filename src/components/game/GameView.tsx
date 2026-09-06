@@ -102,7 +102,7 @@ export function GameView({ grid, start, goal }: GameViewProps) {
           <button type="button" onClick={() => gameStore.replay()} style={buttonStyle}>
             Replay
           </button>
-          <button type="button" onClick={() => uiStore.setGameView(false)} style={buttonStyle}>
+          <button type="button" onClick={() => uiStore.setMainView("canvas")} style={buttonStyle}>
             Close
           </button>
         </div>

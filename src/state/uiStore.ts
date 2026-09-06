@@ -2,12 +2,22 @@ import { useSyncExternalStore } from "react";
 import type { NodeId } from "../types/shared";
 
 /**
+ * Which alternate view (if any) occupies the main panel instead of the
+ * single CanvasGrid. Refactored from two separate booleans
+ * (`comparisonViewActive`/`gameViewActive`) into one discriminated field
+ * when Phase 11 added a third alternate view (Chase Mode) — two booleans
+ * each remembering to clear the other was already a little fragile;
+ * three would have meant N*(N-1) manual exclusivity checks scattered
+ * across setters. A single field with one setter (`setMainView`) makes
+ * "exactly one view at a time" true by construction, not by convention.
+ */
+export type MainView = "canvas" | "comparison" | "game" | "chase";
+
+/**
  * UI state (ARCHITECTURE.md §1's fifth layer): "what is the user currently
- * viewing/configuring". `selectedNodeId` is the one piece of UI state
- * Phase 6 needs — which cell the Inspector is currently showing. This is
- * genuinely UI state, not World/Algorithm/Playback state: it doesn't
- * affect the simulation, the algorithm, or playback itself, only what a
- * side panel currently displays.
+ * viewing/configuring". This is genuinely UI state, not World/Algorithm/
+ * Playback state: none of these fields affect the simulation, any
+ * algorithm run, or playback itself — only what's currently displayed.
  */
 export interface UIState {
   selectedNodeId: NodeId | null;
@@ -21,26 +31,12 @@ export interface UIState {
    * change what the Inspector shows until the user explicitly commits.
    */
   cursorNodeId: NodeId | null;
-  /**
-   * Whether Comparison Mode's synchronized 4-canvas animated view (Phase 9
-   * addendum) is currently shown in the main panel in place of the single
-   * CanvasGrid. Purely "what is the user currently viewing" — UI state per
-   * ARCHITECTURE.md §1, not World/Algorithm/Playback state; it doesn't
-   * affect the simulation or any algorithm run, only which view renders.
-   */
-  comparisonViewActive: boolean;
-  /**
-   * Whether Game Mode's view (Phase 10) is currently shown in the main
-   * panel in place of the single CanvasGrid. Mutually exclusive with
-   * `comparisonViewActive` — only one alternate main-panel view is shown
-   * at a time (see `setGameView`/`setComparisonView`, which each turn the
-   * other off). Same UI-state justification as `comparisonViewActive`.
-   */
-  gameViewActive: boolean;
+  /** Which alternate main-panel view is showing. See `MainView` above. */
+  mainView: MainView;
 }
 
 function createUIStore() {
-  let state: UIState = { selectedNodeId: null, cursorNodeId: null, comparisonViewActive: false, gameViewActive: false };
+  let state: UIState = { selectedNodeId: null, cursorNodeId: null, mainView: "canvas" };
   const listeners = new Set<() => void>();
   const notify = () => listeners.forEach((l) => l());
 
@@ -72,19 +68,15 @@ function createUIStore() {
       notify();
     },
 
-    setComparisonView(active: boolean): void {
-      if (state.comparisonViewActive === active && (!active || !state.gameViewActive)) return;
-      // Mutually exclusive with Game Mode: opening Comparison Mode closes
-      // Game Mode, per PHASE_10_GAME_MODE.md's behavior spec ("only one
-      // alternate main-panel view at a time").
-      state = { ...state, comparisonViewActive: active, gameViewActive: active ? false : state.gameViewActive };
-      notify();
-    },
-
-    setGameView(active: boolean): void {
-      if (state.gameViewActive === active && (!active || !state.comparisonViewActive)) return;
-      // Mutually exclusive with Comparison Mode — see setComparisonView above.
-      state = { ...state, gameViewActive: active, comparisonViewActive: active ? false : state.comparisonViewActive };
+    /**
+     * The single place main-panel-view exclusivity is enforced — setting
+     * any view replaces whichever one was showing before, so it is
+     * structurally impossible for two alternate views to be active at
+     * once (Phase 11 acceptance criterion).
+     */
+    setMainView(view: MainView): void {
+      if (state.mainView === view) return;
+      state = { ...state, mainView: view };
       notify();
     },
   };

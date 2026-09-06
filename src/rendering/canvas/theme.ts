@@ -1,4 +1,5 @@
 import { TerrainType } from "../../world/terrain";
+import type { AlgorithmName } from "../../algorithms/pathfinding/types";
 
 /**
  * Colors and non-color encodings for the grid. Per ARCHITECTURE.md §8/§17:
@@ -52,6 +53,23 @@ export const WALL_HATCH_SPACING = 6; // CSS px between hatch lines
 
 export const START_COLOR = "#2f6b45";
 export const GOAL_COLOR = "#8a3030";
+
+/**
+ * One consistent color identity per algorithm, used everywhere more than
+ * one algorithm's result is shown at once: Comparison Mode's 4-up view
+ * (Phase 9) and Chase Mode's four simultaneous ghosts (Phase 11). Kept
+ * here alongside every other color constant rather than duplicated per
+ * component — Phase 9 originally defined this map locally in
+ * `ComparisonGrid.tsx`; Phase 11 needing the identical mapping for ghost
+ * markers is exactly the "used in two places" signal that means it
+ * belongs in the shared theme file instead.
+ */
+export const ALGORITHM_COLORS: Record<AlgorithmName, { fill: string; border: string }> = {
+  bfs: { fill: "rgba(59, 130, 246, 0.65)", border: "rgba(29, 78, 216, 0.9)" }, // blue
+  dfs: { fill: "rgba(168, 85, 247, 0.65)", border: "rgba(107, 33, 168, 0.9)" }, // purple
+  dijkstra: { fill: "rgba(20, 184, 166, 0.65)", border: "rgba(15, 118, 110, 0.9)" }, // teal
+  astar: { fill: "rgba(240, 173, 78, 0.85)", border: "rgba(120, 74, 6, 0.9)" }, // gold
+};
 
 /**
  * Rough relative-luminance contrast check (WCAG formula), used only to

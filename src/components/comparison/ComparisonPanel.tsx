@@ -19,7 +19,7 @@ import { buildComparisonRows, findMostEfficientOptimal } from "../../algorithms/
 export function ComparisonPanel() {
   const { results } = useRunState();
   const { grid, start, goal } = useWorldState();
-  const { comparisonViewActive } = useUIState();
+  const { mainView } = useUIState();
 
   const rows = buildComparisonRows(results);
   const winner = findMostEfficientOptimal(rows);
@@ -36,7 +36,7 @@ export function ComparisonPanel() {
       const result = run({ grid, start, goal, diagonals: false });
       runStore.setResult(name, result);
     }
-    uiStore.setComparisonView(true);
+    uiStore.setMainView("comparison");
   };
 
   return (
@@ -64,10 +64,10 @@ export function ComparisonPanel() {
         Run All
       </button>
 
-      {rows.length > 0 && !comparisonViewActive && (
+      {rows.length > 0 && mainView !== "comparison" && (
         <button
           type="button"
-          onClick={() => uiStore.setComparisonView(true)}
+          onClick={() => uiStore.setMainView("comparison")}
           style={{
             width: "100%",
             padding: "6px 10px",

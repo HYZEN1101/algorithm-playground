@@ -4,24 +4,9 @@ import type { Grid } from "../../world/grid";
 import type { NodeId } from "../../types/shared";
 import type { AlgorithmName } from "../../algorithms/pathfinding/types";
 import { ALGORITHM_NAMES, ALGORITHM_REGISTRY } from "../../algorithms/pathfinding/registry";
-import type { PathColor } from "../../rendering/canvas/pathRenderer";
+import { ALGORITHM_COLORS } from "../../rendering/canvas/theme";
 import { MiniAlgorithmCanvas } from "./MiniAlgorithmCanvas";
 import { uiStore } from "../../state/uiStore";
-
-/**
- * One distinct path color per algorithm, so the four simultaneous
- * mini-canvases are attributable at a glance without reading labels.
- * Frontier/visited styling is intentionally identical across all four
- * (pathRenderer.ts defaults) — only the final PATH needs a per-algorithm
- * identity. A* keeps the original single-canvas gold, since that's the
- * color this project's screenshots/demo script already associate with it.
- */
-const COMPARISON_COLORS: Record<AlgorithmName, PathColor> = {
-  bfs: { fill: "rgba(59, 130, 246, 0.65)", border: "rgba(29, 78, 216, 0.9)" }, // blue
-  dfs: { fill: "rgba(168, 85, 247, 0.65)", border: "rgba(107, 33, 168, 0.9)" }, // purple
-  dijkstra: { fill: "rgba(20, 184, 166, 0.65)", border: "rgba(15, 118, 110, 0.9)" }, // teal
-  astar: { fill: "rgba(240, 173, 78, 0.85)", border: "rgba(120, 74, 6, 0.9)" }, // gold
-};
 
 interface ComparisonGridProps {
   grid: Grid;
@@ -63,7 +48,7 @@ export function ComparisonGrid({ grid, start, goal }: ComparisonGridProps) {
           <button type="button" onClick={() => setReplayToken((t) => t + 1)} style={buttonStyle}>
             Replay
           </button>
-          <button type="button" onClick={() => uiStore.setComparisonView(false)} style={buttonStyle}>
+          <button type="button" onClick={() => uiStore.setMainView("canvas")} style={buttonStyle}>
             Close
           </button>
         </div>
@@ -92,7 +77,7 @@ export function ComparisonGrid({ grid, start, goal }: ComparisonGridProps) {
             grid={grid}
             start={start}
             goal={goal}
-            pathColor={COMPARISON_COLORS[name]}
+            pathColor={ALGORITHM_COLORS[name]}
             replayToken={replayToken}
             position={finishOrder.includes(name) ? finishOrder.indexOf(name) + 1 : undefined}
             onFinish={handleFinish}

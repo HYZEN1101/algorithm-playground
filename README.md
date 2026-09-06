@@ -23,7 +23,7 @@ before adding anything else**, per `ENGINEERING_GUIDELINES.md` §35.
 ```bash
 npm install
 npm run dev       # dev server, http://localhost:5173
-npm test          # 240 tests, Vitest
+npm test          # 247 tests, Vitest
 npm run build     # production build -> dist/
 npm run preview   # serve the production build locally
 ```
@@ -72,6 +72,22 @@ synthetic event timeline replayed through an ordinary
 rather than animating nothing. This is the first of several planned
 milestones (Treasure, Dangerous Terrain/Enemy avoidance, and beyond) —
 see `phases/PHASE_10_GAME_MODE.md`'s Milestone Tracker.
+
+## Chase Mode (playable)
+
+Press **Start Chase** (left sidebar, below Game Mode) for this project's
+first genuinely playable mode. You control a character with arrow keys /
+WASD, in real time. All four pathfinding algorithms run simultaneously as
+four colored ghosts (BFS blue, DFS purple, Dijkstra teal, A* gold — same
+colors as Comparison Mode), each continuously re-planning a fresh route
+to your current position every 400ms and taking one step along it — a
+live demonstration of how differently each algorithm pursues a moving
+target, not just a static one. Survive 30 seconds to win. No changes to
+any pathfinding algorithm were needed — ghosts just call the same
+`ALGORITHM_REGISTRY` functions on a timer, against a moving goal. See
+`phases/PHASE_11_CHASE_MODE.md` for the full design and the reasoning for
+why this needed its own live-state store rather than reusing
+`PlaybackController`.
 
 ## Architecture
 
@@ -202,26 +218,36 @@ here's the script to record it, per requirements §30:
 5. **(90-110s)** Press Run All — four canvases open, each animating a
    different algorithm on the same map in a different color. Point out
    A*'s lower "explored" count next to BFS/Dijkstra in the sidebar table
-   for the identical optimal cost. Mention Game Mode as what's next (see
-   below).
+   for the identical optimal cost.
+6. **(110-130s)** Press Start Chase — play it live for a few seconds,
+   arrow keys, four ghosts closing in. This is the moment to say "same
+   four algorithms, now chasing you in real time."
 
 ## Future roadmap
 
 Explicitly deferred, in priority order per `HANDOFF.md` and
 `algorithm-playground-requirements.md`:
 
-1. **Game Mode** — Milestone 1 (Escape) is done (see above). Remaining:
-   Treasure, Dangerous Terrain, Enemy avoidance, Multi-target, Limited
-   Resources scenarios, plus entities beyond Player/Exit (keys, doors,
-   enemies, hazards) — tracked in `phases/PHASE_10_GAME_MODE.md`'s
+1. **Game Mode, remaining milestones** — Milestone 1 (Escape) is done.
+   Remaining: Treasure, Dangerous Terrain, Enemy avoidance, Multi-target,
+   Limited Resources scenarios, plus entities beyond Player/Exit (keys,
+   doors, enemies, hazards) — tracked in `phases/PHASE_10_GAME_MODE.md`'s
    Milestone Tracker rather than a new phase file per scenario.
-2. **Sorting Playground** — a separate mode (bubble/selection/insertion/
+2. **Chase Mode variants** — difficulty levels, per-ghost speed tuning,
+   fewer/more ghosts, scoring — tracked in `phases/PHASE_11_CHASE_MODE.md`.
+3. **A 2D platformer/runner mode** ("Mario-style layout, runner-vs-chaser
+   mechanics") — raised by the user during Phase 11 as a future idea,
+   deliberately not started: it needs real physics (gravity, jumping,
+   side-view rendering) rather than grid-cell movement, enough of a
+   departure from this project's grid/`NodeId` world model to warrant its
+   own architecture proposal rather than an incremental addition.
+4. **Sorting Playground** — a separate mode (bubble/selection/insertion/
    merge/quick/heap sort), reusing the same event-timeline/playback
    architecture this pathfinding MVP already built.
-3. **Maze/cellular-automata generators**, beyond the current random-
+5. **Maze/cellular-automata generators**, beyond the current random-
    obstacle generator.
-4. **Shareable-scenario URLs** (`/play?seed=...&algorithm=...`).
-5. Further out: Genetic Algorithm and Reinforcement Learning playgrounds.
+6. **Shareable-scenario URLs** (`/play?seed=...&algorithm=...`).
+7. Further out: Genetic Algorithm and Reinforcement Learning playgrounds.
 
 None of these have a phase file yet — per this project's own rule
 (`Documentation Consistency Fixes — Pre-Phase-1.md` §3), a phase file gets

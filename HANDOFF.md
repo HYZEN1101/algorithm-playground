@@ -24,14 +24,22 @@ every phase — before moving to the next one, not after starting it.
 
 ## Current Status
 
-**Active phase:** Phase 10 (Game Mode), Milestone 1 (Escape scenario) —
-COMPLETE. Phase 9 (Comparison Mode) plus its three addenda (4-up animated
-view, speed sync, finish-order positions) are done before it. MVP (Phases
-1-8) was already closed, with two explicitly-flagged exceptions (live
-deployment, recorded demo video — see the Phase 8 log entry below).
-**Next phase to start:** Phase 10, Milestone 2 (Treasure scenario) — see
-`phases/PHASE_10_GAME_MODE.md`'s Milestone Tracker — or any other roadmap
-item in `README.md`'s Future Roadmap, once picked.
+**Active phase:** Phase 11 (Chase Mode) — COMPLETE. This is the project's
+first genuinely interactive/playable mode (real-time keyboard control +
+live AI pursuit), distinct from every earlier mode's "watch a
+precomputed result animate" pattern. Phase 10 Milestone 1 (Escape) and
+Phase 9 (Comparison Mode, with its three addenda) are both done before
+it. MVP (Phases 1-8) was already closed, with two explicitly-flagged
+exceptions (live deployment, recorded demo video — see the Phase 8 log
+entry below).
+**Next phase to start:** none currently planned. Candidates: Phase 10's
+remaining Game Mode milestones (Treasure, Dangerous Terrain, Enemy
+Avoidance, Multi-target, Limited Resources — see
+`phases/PHASE_10_GAME_MODE.md`'s Milestone Tracker), Chase Mode
+difficulty/scoring variants, or a separately-scoped future 2D-platformer/
+runner mode (raised as an idea, not yet architected — see Phase 11's log
+entry). Sorting, maze generators, and shareable-scenario URLs remain in
+`README.md`'s Future Roadmap.
 **Blocking issues:** none for continued development. Two Phase 8 work items
 could not be completed inside this sandboxed environment (no network
 access to any static host; no screen-recording capability) — both are
@@ -40,13 +48,13 @@ timestamped demo script provided) and left as the one remaining human
 action item. See the Phase 8 log entry below for specifics.
 **Repo state:** MVP feature-complete per requirements §31's Definition of
 Done, PLUS Comparison Mode (Phase 9, with its 4-up animated view + speed
-sync + finish positions) PLUS Game Mode's first milestone (Phase 10:
-an Escape scenario — press "Start Escape" and watch a player token walk
-the currently-selected algorithm's found route to the exit, reusing 100%
-of the existing playback/rendering machinery). All four pathfinding
-algorithms, real playback, Inspector + Metrics, keyboard navigation,
-reduced-motion support, a WCAG AA-audited palette are all in place and
-tested — 240 tests passing.
+sync + finish positions), PLUS Game Mode's first milestone (Phase 10:
+Escape), PLUS Chase Mode (Phase 11: a live, playable, Pac-Man-style mode
+— you move in real time, four ghosts each run a different pathfinding
+algorithm and continuously re-plan to chase you, survive 30 seconds to
+win). All four pathfinding algorithms, real playback, Inspector +
+Metrics, keyboard navigation, reduced-motion support, a WCAG AA-audited
+palette are all in place and tested — 247 tests passing.
 `README.md` rewritten as the portfolio-facing entry point (previous
 planning-docs-index content preserved via a "Continuing development"
 section pointing to `HANDOFF.md`/`ARCHITECTURE.md`).
@@ -1349,7 +1357,130 @@ log is the project's institutional memory.
   way to mark cells as elevated-cost/impassable before the algorithm run
   — a world-construction concern, not a new algorithm.
 
+### Phase 11 — Chase Mode (playable, Pac-Man-style)
+- Status: COMPLETE. Spec written first, per this project's own rule:
+  `phases/PHASE_11_CHASE_MODE.md`. Design decided via direct elicitation
+  with the user before the file was written: all 4 algorithms as 4
+  simultaneous ghosts, real-time (not turn-based) movement, survive-a-
+  time-limit as the win condition.
+- **This is the project's first genuinely interactive mode.** Every
+  earlier mode (Playback, Comparison, Escape) is "watch a precomputed
+  result animate." Chase Mode is live: the user moves a character in
+  real time while four AI ghosts continuously re-plan and pursue.
+- Files created: `src/game/chaseEngine.ts` (pure —
+  `computeGhostStep`/`computePlayerMove`), `tests/game/
+  chaseEngine.test.ts`, `src/state/chaseStore.ts` (new live-state store —
+  NOT built on `PlaybackController`, see Architecture Decision below),
+  `src/components/game/ChaseView.tsx` (main-panel canvas + keyboard
+  input + HUD), `src/components/game/ChasePanel.tsx` (sidebar: "Start
+  Chase" + algorithm legend + result text).
+- Files modified: `src/state/uiStore.ts` (REFACTORED —
+  `comparisonViewActive`/`gameViewActive` booleans replaced by a single
+  `mainView: "canvas" | "comparison" | "game" | "chase"` field before a
+  third boolean could compound the mess; `setMainView()` is now the one
+  place exclusivity is enforced, not three ad hoc booleans each
+  remembering to clear the others), `src/components/comparison/
+  ComparisonPanel.tsx`/`ComparisonGrid.tsx` and `src/components/game/
+  GamePanel.tsx`/`GameView.tsx` (all four updated to call
+  `setMainView(...)` instead of the old per-view setters — no behavior
+  change for Phases 9/10, purely a call-site update), `src/rendering/
+  canvas/theme.ts` (new `ALGORITHM_COLORS` — the BFS-blue/DFS-purple/
+  Dijkstra-teal/A*-gold palette Phase 9's `ComparisonGrid.tsx` had
+  defined locally, promoted to the shared theme file now that Chase
+  Mode's ghost markers need the identical mapping — "used in two places"
+  is exactly the signal that ended the "was this premature abstraction"
+  question), `src/components/layout/AppShell.tsx` (four-way main-panel
+  switch; mounts `ChasePanel` below `GamePanel`).
+- **Architecture Decision, recorded in the phase file and confirmed
+  correct during implementation**: Chase Mode does NOT reuse
+  `PlaybackController`. That system (Phase 5) scrubs through an
+  already-fully-computed event array — exactly right for Escape/
+  Comparison Mode, wrong for Chase Mode, where there is no such array:
+  the world changes live in response to real-time player input and a
+  live ghost-replan timer. `chaseStore.ts` is a new, equally small,
+  hand-rolled store (same pattern as every other store in this project)
+  with its own two `setInterval` timers instead of zero. Similarly,
+  rendering does NOT reuse `createRenderer(...)` — that renderer's whole
+  design centers on a single algorithm's `NodeState` map, which has no
+  natural way to represent 5 independently-movable tokens. `ChaseView.tsx`
+  instead reuses the lower-level, already-tested building blocks
+  (`drawStaticLayer`, `computeCellMetrics`, `configureCanvasBackingStore`,
+  `gridToPixelCenter`) and draws plain circle markers on top — new
+  composition, zero new low-level drawing primitives, and zero changes to
+  any of the four pathfinding algorithms themselves (guideline §20).
+- **Decisions made**:
+  - **Ghost replanning is genuine re-planning, not a cached pursuit
+    path**: every 400ms, each ghost calls `computeGhostStep`, which runs
+    its algorithm FRESH from the ghost's current position to the
+    player's CURRENT position and takes the first step of that freshly
+    computed path. A ghost with no path to the player at all (fully
+    walled off) simply doesn't move that tick — verified directly with a
+    test that walls off the grid and confirms the function returns the
+    ghost's unchanged position without throwing.
+  - **Spawn positions reuse Start/Goal rather than adding new UI**:
+    player spawns at the world's Start; all four ghosts spawn together at
+    the world's Goal, reframed as a "ghost den" — same reuse-the-existing-
+    concept approach Phase 10 already took with `goal` as "the exit."
+  - **Catch detection fires from both directions**: checked immediately
+    after every player move (walking into a ghost) AND after every
+    ghost-replan tick (a ghost stepping onto the player) — the phase
+    file's acceptance criteria explicitly called out needing both, not
+    just one.
+  - **`chaseStore` gets its own file, not folded into `gameStore` from
+    Phase 10**: `gameStore` models "a precomputed path to walk" (paired
+    with `PlaybackController`); `chaseStore` models "a live simulation
+    with its own timers" — different enough shapes that sharing a file
+    would blur two genuinely different concerns, matching the same
+    reasoning that already keeps `runStore` and `uiStore` separate.
+  - **`uiStore`'s boolean-to-enum refactor timing**: done NOW (adding the
+    third view) rather than deferred — two booleans each independently
+    clearing the other (Phase 10's approach) was already a little
+    fragile; a third would have meant real N*(N-1) exclusivity bookkeeping
+    scattered across setters. Refactoring before that happened, not after,
+    per the "cheaper to fix now than after it compounds" engineering
+    instinct.
+- **Commands used to verify**:
+  - `npx tsc --noEmit` → 0 errors
+  - `npx vitest run` → 17 test files, **247 tests passing** (240 previous
+    + 7 new `chaseEngine` tests)
+  - `npm run build` → succeeds (78 modules, up from 74)
+  - Import-boundary grep: `game/` (including the new `chaseEngine.ts`)
+    still has zero imports of `react`/`components/`/`rendering/`/`state/`
+- What still needs a human in a real browser: this is the first mode
+  with live keyboard input and a real-time loop — genuinely cannot be
+  fully verified without a human actually playing it (does 400ms feel
+  like a fair/fun ghost reaction speed, does arrow-key movement feel
+  responsive, do four re-planned algorithm runs every 400ms on a large
+  grid cause any visible stutter). Flagged explicitly rather than
+  assumed fine.
+- Known limitations (explicit non-goals from
+  `PHASE_11_CHASE_MODE.md`, not oversights): no pellets/items/scoring, no
+  multiple lives, no difficulty levels or per-ghost speed tuning, no
+  sound. World editing is not possible while Chase Mode is open (by
+  omission — the sidebar's TerrainPicker/GenerateButton remain visible
+  but editing mid-chase was never tested/guarded against; worth an
+  explicit decision in a future pass rather than leaving it ambiguous).
+- Decisions relevant to future work: `chaseEngine.ts`'s two pure
+  functions are stable and reusable if difficulty variants (faster/slower
+  ghosts, fewer ghosts) are wanted later — that would only need
+  `chaseStore`'s tick interval or spawn logic to change, not
+  `chaseEngine.ts` itself. A separate, architecturally distinct 2D
+  platformer/runner mode ("Mario-layout with chase mechanics") was raised
+  by the user as a future idea during this phase — deliberately NOT
+  started: it would need real physics (gravity, jumping, side-view
+  rendering) rather than grid-cell movement, which is a large enough
+  departure from this project's entire grid/`NodeId`-based world model
+  that it would warrant its own architecture proposal (guideline §27),
+  not an incremental addition to Chase Mode. Recorded here so it isn't
+  forgotten, not scoped or estimated yet.
 
+## Open Questions For The Product Owner
+
+(Move items here out of phase files' "Ambiguities" once they need a human
+decision rather than an engineering default. Restored here after an
+editing slip dropped this header during a prior addendum insertion —
+found and fixed while adding the Phase 11 entry below, not left silently
+broken.)
 
 - Confirm Comparison Mode really belongs after Phase 8 (MVP close) rather
   than being pulled forward — see Phase 6 file's note.
