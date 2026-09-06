@@ -1,9 +1,11 @@
 import { CanvasGrid } from "../grid/CanvasGrid";
 import { ComparisonGrid } from "../comparison/ComparisonGrid";
+import { GameView } from "../game/GameView";
 import { TerrainPicker } from "../controls/TerrainPicker";
 import { GenerateButton } from "../controls/GenerateButton";
 import { AlgorithmPicker } from "../controls/AlgorithmPicker";
 import { ComparisonPanel } from "../comparison/ComparisonPanel";
+import { GamePanel } from "../game/GamePanel";
 import { PlaybackControls } from "../controls/PlaybackControls";
 import { NodeInspector } from "../inspector/NodeInspector";
 import { MetricsPanel } from "../metrics/MetricsPanel";
@@ -17,10 +19,14 @@ import { useUIState } from "../../state/uiStore";
  * (Phase 6). Phase 9 addendum: the center panel swaps to ComparisonGrid's
  * synchronized 4-up animated view while `comparisonViewActive` is set —
  * driven by ComparisonPanel's "Run All" button in the left sidebar.
+ * Phase 10: a third alternate view, GameView, swaps in while
+ * `gameViewActive` is set — driven by GamePanel's "Start Escape" button.
+ * The two alternate views are mutually exclusive (uiStore enforces this),
+ * so this is a plain three-way switch, never two views at once.
  */
 export function AppShell() {
   const { grid, start, goal } = useWorldState();
-  const { comparisonViewActive } = useUIState();
+  const { comparisonViewActive, gameViewActive } = useUIState();
 
   return (
     <div
@@ -64,10 +70,18 @@ export function AppShell() {
           <AlgorithmPicker />
           <div style={{ height: 20 }} />
           <ComparisonPanel />
+          <div style={{ height: 20 }} />
+          <GamePanel />
         </aside>
 
         <main style={{ flex: 1, minWidth: 0, padding: 16 }}>
-          {comparisonViewActive ? <ComparisonGrid grid={grid} start={start} goal={goal} /> : <CanvasGrid />}
+          {gameViewActive ? (
+            <GameView grid={grid} start={start} goal={goal} />
+          ) : comparisonViewActive ? (
+            <ComparisonGrid grid={grid} start={start} goal={goal} />
+          ) : (
+            <CanvasGrid />
+          )}
         </main>
 
         <aside

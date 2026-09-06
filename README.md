@@ -23,7 +23,7 @@ before adding anything else**, per `ENGINEERING_GUIDELINES.md` §35.
 ```bash
 npm install
 npm run dev       # dev server, http://localhost:5173
-npm test          # 237 tests, Vitest
+npm test          # 240 tests, Vitest
 npm run build     # production build -> dist/
 npm run preview   # serve the production build locally
 ```
@@ -58,6 +58,20 @@ loses). "Replay" restarts all four in lockstep; "Close" returns to the
 single canvas. See `phases/PHASE_9_COMPARISON_MODE.md` for the original
 spec and `HANDOFF.md`'s Phase 9 Addendum for how the animated view
 followed on afterward.
+
+## Game Mode (Milestone 1: Escape)
+
+Press **Start Escape** (left sidebar, below Comparison Mode) to watch a
+player token walk the currently-selected algorithm's found route from
+Start to the Exit, in the main panel. This reuses the exact same
+playback/rendering machinery as the rest of the app — no separate
+pathfinding implementation for Game Mode (per
+`ENGINEERING_GUIDELINES.md` §20) — by turning the found path into a
+synthetic event timeline replayed through an ordinary
+`PlaybackController`. If no route exists, the sidebar says so plainly
+rather than animating nothing. This is the first of several planned
+milestones (Treasure, Dangerous Terrain/Enemy avoidance, and beyond) —
+see `phases/PHASE_10_GAME_MODE.md`'s Milestone Tracker.
 
 ## Architecture
 
@@ -196,9 +210,11 @@ here's the script to record it, per requirements §30:
 Explicitly deferred, in priority order per `HANDOFF.md` and
 `algorithm-playground-requirements.md`:
 
-1. **Game Mode** — the same world/algorithm systems, wrapped in objectives,
-   entities (keys, doors, enemies, hazards), and scenarios (Escape,
-   Treasure, Dangerous Terrain, Enemy, Multi-target, Limited Resources).
+1. **Game Mode** — Milestone 1 (Escape) is done (see above). Remaining:
+   Treasure, Dangerous Terrain, Enemy avoidance, Multi-target, Limited
+   Resources scenarios, plus entities beyond Player/Exit (keys, doors,
+   enemies, hazards) — tracked in `phases/PHASE_10_GAME_MODE.md`'s
+   Milestone Tracker rather than a new phase file per scenario.
 2. **Sorting Playground** — a separate mode (bubble/selection/insertion/
    merge/quick/heap sort), reusing the same event-timeline/playback
    architecture this pathfinding MVP already built.

@@ -29,10 +29,18 @@ export interface UIState {
    * affect the simulation or any algorithm run, only which view renders.
    */
   comparisonViewActive: boolean;
+  /**
+   * Whether Game Mode's view (Phase 10) is currently shown in the main
+   * panel in place of the single CanvasGrid. Mutually exclusive with
+   * `comparisonViewActive` — only one alternate main-panel view is shown
+   * at a time (see `setGameView`/`setComparisonView`, which each turn the
+   * other off). Same UI-state justification as `comparisonViewActive`.
+   */
+  gameViewActive: boolean;
 }
 
 function createUIStore() {
-  let state: UIState = { selectedNodeId: null, cursorNodeId: null, comparisonViewActive: false };
+  let state: UIState = { selectedNodeId: null, cursorNodeId: null, comparisonViewActive: false, gameViewActive: false };
   const listeners = new Set<() => void>();
   const notify = () => listeners.forEach((l) => l());
 
@@ -65,8 +73,18 @@ function createUIStore() {
     },
 
     setComparisonView(active: boolean): void {
-      if (state.comparisonViewActive === active) return;
-      state = { ...state, comparisonViewActive: active };
+      if (state.comparisonViewActive === active && (!active || !state.gameViewActive)) return;
+      // Mutually exclusive with Game Mode: opening Comparison Mode closes
+      // Game Mode, per PHASE_10_GAME_MODE.md's behavior spec ("only one
+      // alternate main-panel view at a time").
+      state = { ...state, comparisonViewActive: active, gameViewActive: active ? false : state.gameViewActive };
+      notify();
+    },
+
+    setGameView(active: boolean): void {
+      if (state.gameViewActive === active && (!active || !state.comparisonViewActive)) return;
+      // Mutually exclusive with Comparison Mode — see setComparisonView above.
+      state = { ...state, gameViewActive: active, comparisonViewActive: active ? false : state.comparisonViewActive };
       notify();
     },
   };

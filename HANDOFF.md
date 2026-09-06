@@ -24,16 +24,14 @@ every phase — before moving to the next one, not after starting it.
 
 ## Current Status
 
-**Active phase:** Phase 9 (Comparison Mode) — COMPLETE, plus a post-Phase-9
-addendum adding the synchronized 4-up animated comparison view (see that
-addendum's log entry below — it directly supersedes Phase 9's original
-"no multi-canvas playback" non-goal, per explicit user request). MVP
-(Phases 1-8) was already closed, with two explicitly-flagged exceptions
-(live deployment, recorded demo video — see the Phase 8 log entry below).
-**Next phase to start:** none currently planned. Remaining roadmap items
-(Game Mode, Sorting, maze generators, shareable-scenario URLs — see
-`README.md`'s Future Roadmap) each need their own phase file written
-before any code, per this project's own rule, once picked up.
+**Active phase:** Phase 10 (Game Mode), Milestone 1 (Escape scenario) —
+COMPLETE. Phase 9 (Comparison Mode) plus its three addenda (4-up animated
+view, speed sync, finish-order positions) are done before it. MVP (Phases
+1-8) was already closed, with two explicitly-flagged exceptions (live
+deployment, recorded demo video — see the Phase 8 log entry below).
+**Next phase to start:** Phase 10, Milestone 2 (Treasure scenario) — see
+`phases/PHASE_10_GAME_MODE.md`'s Milestone Tracker — or any other roadmap
+item in `README.md`'s Future Roadmap, once picked.
 **Blocking issues:** none for continued development. Two Phase 8 work items
 could not be completed inside this sandboxed environment (no network
 access to any static host; no screen-recording capability) — both are
@@ -41,14 +39,14 @@ fully prepared (production build verified working standalone; a written,
 timestamped demo script provided) and left as the one remaining human
 action item. See the Phase 8 log entry below for specifics.
 **Repo state:** MVP feature-complete per requirements §31's Definition of
-Done, PLUS Comparison Mode (Phase 9: "Run All" now opens a synchronized
-4-up animated view — four independently-playing mini-canvases, one per
-algorithm, each labeled and colored, exploring the identical map
-simultaneously — alongside a metrics table showing nodes-explored/cost/
-optimal-or-not). All four pathfinding algorithms, real playback,
-Inspector + Metrics, keyboard navigation, reduced-motion support, a WCAG
-AA-audited palette, and Comparison Mode are all in place and tested — 237
-tests passing.
+Done, PLUS Comparison Mode (Phase 9, with its 4-up animated view + speed
+sync + finish positions) PLUS Game Mode's first milestone (Phase 10:
+an Escape scenario — press "Start Escape" and watch a player token walk
+the currently-selected algorithm's found route to the exit, reusing 100%
+of the existing playback/rendering machinery). All four pathfinding
+algorithms, real playback, Inspector + Metrics, keyboard navigation,
+reduced-motion support, a WCAG AA-audited palette are all in place and
+tested — 240 tests passing.
 `README.md` rewritten as the portfolio-facing entry point (previous
 planning-docs-index content preserved via a "Continuing development"
 section pointing to `HANDOFF.md`/`ARCHITECTURE.md`).
@@ -1263,9 +1261,95 @@ log is the project's institutional memory.
   and summary line update at the right moments during a real animated
   run, and that the near-tie case above doesn't look glitchy in practice.
 
----
+### Phase 10 — Game Mode (Milestone 1: Escape Scenario)
+- Status: MILESTONE 1 COMPLETE. Spec written first, per this project's
+  own rule: `phases/PHASE_10_GAME_MODE.md`, deliberately scoped to a
+  single milestone (Escape only — Player + Exit, no keys/doors/enemies/
+  treasure/multi-target/limited-resources) with a Milestone Tracker at
+  the bottom of that file for future scenarios, rather than one giant
+  Game Mode phase attempted in one pass (guideline §26).
+- Files created: `src/game/buildWalkEvents.ts` (pure — see the reuse
+  decision below), `tests/game/buildWalkEvents.test.ts`,
+  `src/state/gameStore.ts` (small hand-rolled store — same pattern as
+  worldStore/runStore/uiStore/playbackStore — holding the current escape
+  path/no-route flag/replay token), `src/components/game/GamePanel.tsx`
+  (sidebar: "Start Escape" button + status text),
+  `src/components/game/GameView.tsx` (main-panel canvas, architecturally
+  identical to Phase 9's `MiniAlgorithmCanvas.tsx`: its own
+  `PlaybackController` + its own `createRenderer(...)` instance).
+- Files modified: `src/state/uiStore.ts` (new `gameViewActive` boolean;
+  `setGameView`/`setComparisonView` are now mutually exclusive — opening
+  one closes the other, so only one alternate main-panel view is ever
+  shown at a time), `src/components/layout/AppShell.tsx` (three-way main-
+  panel switch: game / comparison / single canvas; mounts `GamePanel`
+  below `ComparisonPanel` in the sidebar).
+- **Key reuse decision, confirmed working with zero renderer changes**:
+  Game Mode does not implement any pathfinding of its own (guideline
+  §20's explicit requirement) — "Start Escape" runs whichever algorithm
+  is already selected in `AlgorithmPicker`, via the same
+  `ALGORITHM_REGISTRY` Phase 9 built. The resulting `path: NodeId[]` is
+  turned into a synthetic event timeline
+  (`VISIT_NODE`+`BUILD_PATH` per node, in path order, `+COMPLETE`) by the
+  new pure `buildWalkEvents()`, then replayed through a completely
+  ordinary `PlaybackController`/`deriveNodeStates`/renderer — the EXACT
+  same machinery Phase 5 built for real algorithm playback. `VISIT_NODE`
+  gives the current-node ring (reads as the player marker); `BUILD_PATH`
+  progressively marks the cell as "path" status (reads as the trail
+  behind the player). This needed **zero changes** to
+  `gridRenderer.ts`/`pathRenderer.ts`/`renderer.ts` — confirmed exactly as
+  `PHASE_10_GAME_MODE.md`'s "Key Implementation Decision" section
+  predicted before any code was written.
+- **Decisions made**:
+  - **No-path handling**: `GamePanel` never calls
+    `PlaybackController.load([])`/`.play()` — if `run().pathFound` is
+    false, it calls `gameStore.reportNoRoute()` (clears any previous
+    path, sets a flag) and never opens `GameView` at all. The sidebar
+    shows "No route to the exit — the player is trapped." rather than
+    silently doing nothing or animating an empty timeline.
+  - **`gameStore` gets its own file rather than folding into `uiStore`**:
+    a computed escape path is closer to "derived algorithm output for
+    this session" (like `runStore`'s results) than to literal UI-chrome
+    state (`selectedNodeId`, panel visibility) — same reasoning `runStore`
+    already established for keeping algorithm results out of `uiStore`.
+  - **Speed stays synced to the single global Speed slider**, using the
+    identical subscribe-and-reapply pattern as Comparison Mode's Addendum
+    2 — one slider governs pacing everywhere in the app, not a separate
+    Game Mode speed control.
+  - **Mutual exclusivity implemented in `uiStore` itself** (not left to
+    each component to remember to close the other) — `setGameView(true)`
+    unconditionally sets `comparisonViewActive: false` in the same state
+    update, and vice versa, so it's impossible for both views to be
+    active at once regardless of which button was clicked.
+- **Commands used to verify**:
+  - `npx tsc --noEmit` → 0 errors
+  - `npx vitest run` → 16 test files, **240 tests passing** (237 previous
+    + 3 new `buildWalkEvents` tests)
+  - `npm run build` → succeeds (74 modules, up from 70)
+  - Import-boundary grep: `game/` has zero imports of
+    `react`/`components/`/`rendering/`/`state/`, matching the same
+    discipline as `algorithms/`
+- What still needs a human in a real browser: visual confirmation that
+  the walk animation actually reads as "a player walking a route" rather
+  than looking like a truncated algorithm-exploration replay — this is a
+  genuinely new visual composition (reusing existing draw calls in a new
+  combination) and hasn't been eyeballed outside this sandbox.
+- Known limitations (all explicit non-goals from
+  `PHASE_10_GAME_MODE.md`, not oversights): only the Escape scenario
+  exists; no keys/doors/enemies/treasure/hazards; no multi-target or
+  limited-resources mechanics; if the world is edited while a walk is
+  mid-animation, the in-progress path isn't re-validated against the
+  edited grid (a wall painted directly onto the remaining route wouldn't
+  stop the animation) — acceptable for a first milestone, flagged here
+  rather than silently accepted.
+- Decisions relevant to future milestones: `buildWalkEvents` and
+  `gameStore` are stable and reusable as-is for Milestone 2 (Treasure) —
+  that scenario only needs a different node to path *to* plus possibly a
+  cost-minimization framing already inherent in Dijkstra/A*, not new
+  event-synthesis logic. Milestone 3 (hazard/enemy avoidance) will need a
+  way to mark cells as elevated-cost/impassable before the algorithm run
+  — a world-construction concern, not a new algorithm.
 
-## Open Questions For The Product Owner
+
 
 - Confirm Comparison Mode really belongs after Phase 8 (MVP close) rather
   than being pulled forward — see Phase 6 file's note.
