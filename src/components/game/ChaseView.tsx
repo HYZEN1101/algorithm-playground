@@ -4,10 +4,16 @@ import { computeCellMetrics, configureCanvasBackingStore, gridToPixelCenter, typ
 import { drawStaticLayer } from "../../rendering/canvas/gridRenderer";
 import { ALGORITHM_COLORS } from "../../rendering/canvas/theme";
 import { ALGORITHM_NAMES, ALGORITHM_REGISTRY } from "../../algorithms/pathfinding/registry";
-import { chaseStore, useChaseState } from "../../state/chaseStore";
+import {
+  chaseStore,
+  useChaseState,
+  GHOST_REPLAN_INTERVAL_MS,
+  PLAYER_MOVE_INTERVAL_MS,
+} from "../../state/chaseStore";
 import { uiStore } from "../../state/uiStore";
 import type { Grid } from "../../world/grid";
 import type { NodeId } from "../../types/shared";
+import type { AlgorithmName } from "../../algorithms/pathfinding/types";
 import type { Direction } from "../../game/chaseEngine";
 
 interface ChaseViewProps {
@@ -32,6 +38,28 @@ const KEY_TO_DIRECTION: Record<string, Direction> = {
 };
 
 /**
+ * A single entity's (player or ghost) sub-cell animation: it is visually
+ * gliding from `fromNodeId`'s pixel center to `toNodeId`'s pixel center,
+ * starting at `startTime`, over `durationMs`. This is Render State
+ * (ARCHITECTURE.md §1's fifth layer — "interpolated/derived visual data,
+ * read every animation frame") layered on top of chaseStore's Playback-
+ * analogous logical state (which only ever holds discrete NodeIds,
+ * ticking on its own fixed timers) — the same separation this project
+ * already uses everywhere else, applied here for the first time to
+ * continuous rather than discrete-step motion.
+ */
+interface EntityAnim {
+  fromNodeId: NodeId;
+  toNodeId: NodeId;
+  startTime: number;
+  durationMs: number;
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+/**
  * Phase 11 — Chase Mode's canvas. Deliberately NOT createRenderer(...):
  * that renderer models a single algorithm's NodeState overlay
  * (frontier/visited/path), which has no natural way to represent five
@@ -41,6 +69,14 @@ const KEY_TO_DIRECTION: Record<string, Direction> = {
  * `configureCanvasBackingStore`, `gridToPixelCenter`) and draws
  * plain circle markers on top — see PHASE_11_CHASE_MODE.md's
  * Architecture Decision.
+ *
+ * Motion is smooth (Phase 11 Addendum): chaseStore's logical positions
+ * still update in discrete cell-sized jumps on fixed timers (400ms per
+ * ghost replan, `PLAYER_MOVE_INTERVAL_MS` per player step), but a
+ * persistent requestAnimationFrame loop here interpolates each entity's
+ * drawn pixel position between its last two logical positions over that
+ * same duration, so the player and all four ghosts visibly glide rather
+ * than snap.
  */
 export function ChaseView({ grid, start, goal }: ChaseViewProps) {
   const chase = useChaseState();
@@ -49,6 +85,22 @@ export function ChaseView({ grid, start, goal }: ChaseViewProps) {
   const terrainRef = useRef<HTMLCanvasElement | null>(null);
   const metricsRef = useRef<CellMetrics | null>(null);
   const dprRef = useRef(1);
+
+  const playerAnimRef = useRef<EntityAnim | null>(null);
+  const ghostAnimRef = useRef<Partial<Record<AlgorithmName, EntityAnim>>>({});
+
+  function cellCenter(nodeId: NodeId, metrics: CellMetrics): { x: number; y: number } {
+    const { row, col } = grid.coordOf(nodeId);
+    return gridToPixelCenter(row, col, metrics);
+  }
+
+  function currentPixel(anim: EntityAnim | undefined | null, restingNodeId: NodeId | null, metrics: CellMetrics): { x: number; y: number } | null {
+    if (!anim) return restingNodeId !== null ? cellCenter(restingNodeId, metrics) : null;
+    const t = Math.min(1, (performance.now() - anim.startTime) / anim.durationMs);
+    const from = cellCenter(anim.fromNodeId, metrics);
+    const to = cellCenter(anim.toNodeId, metrics);
+    return { x: lerp(from.x, to.x, t), y: lerp(from.y, to.y, t) };
+  }
 
   function redraw(): void {
     const canvas = canvasRef.current;
@@ -72,13 +124,18 @@ export function ChaseView({ grid, start, goal }: ChaseViewProps) {
 
     const radius = metrics.cellSize * 0.32;
 
-    if (chase.ghostPositions) {
+    // Read chaseStore fresh every frame (not the `chase` value closed
+    // over from the last React render) — this loop runs independently
+    // of React's render cycle, so it must not rely on a stale snapshot.
+    const liveChase = chaseStore.getState();
+
+    if (liveChase.ghostPositions) {
       for (const name of ALGORITHM_NAMES) {
-        const { row, col } = grid.coordOf(chase.ghostPositions[name]);
-        const { x, y } = gridToPixelCenter(row, col, metrics);
+        const pixel = currentPixel(ghostAnimRef.current[name], liveChase.ghostPositions[name], metrics);
+        if (!pixel) continue;
         const color = ALGORITHM_COLORS[name];
         ctx.beginPath();
-        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.arc(pixel.x, pixel.y, radius, 0, Math.PI * 2);
         ctx.fillStyle = color.fill;
         ctx.fill();
         ctx.lineWidth = 2;
@@ -87,11 +144,10 @@ export function ChaseView({ grid, start, goal }: ChaseViewProps) {
       }
     }
 
-    if (chase.playerNodeId !== null) {
-      const { row, col } = grid.coordOf(chase.playerNodeId);
-      const { x, y } = gridToPixelCenter(row, col, metrics);
+    const playerPixel = currentPixel(playerAnimRef.current, liveChase.playerNodeId, metrics);
+    if (playerPixel) {
       ctx.beginPath();
-      ctx.arc(x, y, radius * 1.15, 0, Math.PI * 2);
+      ctx.arc(playerPixel.x, playerPixel.y, radius * 1.15, 0, Math.PI * 2);
       ctx.fillStyle = "#1c1a17";
       ctx.fill();
       ctx.lineWidth = 2;
@@ -139,24 +195,94 @@ export function ChaseView({ grid, start, goal }: ChaseViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [grid, start, goal]);
 
-  // Redraw markers every time chaseStore notifies (player move, ghost
-  // replan tick, clock tick, catch/survive).
+  // Whenever chaseStore's LOGICAL position for the player or any ghost
+  // actually changes, (re)start that entity's glide animation from
+  // wherever it was resting to the new position. Deliberately does NOT
+  // fire on every chaseStore notification (the countdown clock ticks
+  // every 100ms without moving anything) — only on a genuine NodeId
+  // change, so an in-flight glide is never interrupted/restarted by an
+  // unrelated update.
   useEffect(() => {
-    redraw();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (chase.playerNodeId !== null) {
+      const prevAnim = playerAnimRef.current;
+      const restingNodeId = prevAnim ? prevAnim.toNodeId : chase.playerNodeId;
+      if (restingNodeId !== chase.playerNodeId) {
+        playerAnimRef.current = {
+          fromNodeId: restingNodeId,
+          toNodeId: chase.playerNodeId,
+          startTime: performance.now(),
+          durationMs: PLAYER_MOVE_INTERVAL_MS,
+        };
+      }
+    } else {
+      playerAnimRef.current = null;
+    }
+
+    if (chase.ghostPositions) {
+      for (const name of ALGORITHM_NAMES) {
+        const newPos = chase.ghostPositions[name];
+        const prevAnim = ghostAnimRef.current[name];
+        const restingNodeId = prevAnim ? prevAnim.toNodeId : newPos;
+        if (restingNodeId !== newPos) {
+          ghostAnimRef.current[name] = {
+            fromNodeId: restingNodeId,
+            toNodeId: newPos,
+            startTime: performance.now(),
+            durationMs: GHOST_REPLAN_INTERVAL_MS,
+          };
+        }
+      }
+    } else {
+      ghostAnimRef.current = {};
+    }
   }, [chase]);
 
-  // Keyboard input — only listens while this view is mounted, i.e. only
-  // while Chase Mode is the active main view.
+  // Persistent render loop, independent of React's render cycle — redraws
+  // every animation frame using whatever the CURRENT interpolated
+  // position is, for the component's whole mounted lifetime.
+  useEffect(() => {
+    let active = true;
+    let rafId: number;
+
+    const frame = () => {
+      if (!active) return;
+      redraw();
+      rafId = requestAnimationFrame(frame);
+    };
+    rafId = requestAnimationFrame(frame);
+
+    return () => {
+      active = false;
+      cancelAnimationFrame(rafId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keyboard input: tracks HELD directions rather than moving on every
+  // keydown — actual movement happens on chaseStore's own fixed
+  // PLAYER_MOVE_INTERVAL_MS timer, so speed is constant no matter how
+  // fast or slow the player presses keys (see chaseStore.ts's Addendum
+  // note — this replaced immediate per-keydown movement, which let
+  // button-mashing outrun the ghosts).
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const direction = KEY_TO_DIRECTION[event.key];
       if (!direction) return;
       event.preventDefault();
-      chaseStore.movePlayer(direction);
+      chaseStore.setDirectionHeld(direction);
+    };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      const direction = KEY_TO_DIRECTION[event.key];
+      if (!direction) return;
+      event.preventDefault();
+      chaseStore.clearDirectionHeld(direction);
     };
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
   }, []);
 
   const handleReplay = () => chaseStore.start(grid, start, goal);

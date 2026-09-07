@@ -24,22 +24,24 @@ every phase — before moving to the next one, not after starting it.
 
 ## Current Status
 
-**Active phase:** Phase 11 (Chase Mode) — COMPLETE. This is the project's
-first genuinely interactive/playable mode (real-time keyboard control +
-live AI pursuit), distinct from every earlier mode's "watch a
-precomputed result animate" pattern. Phase 10 Milestone 1 (Escape) and
-Phase 9 (Comparison Mode, with its three addenda) are both done before
-it. MVP (Phases 1-8) was already closed, with two explicitly-flagged
-exceptions (live deployment, recorded demo video — see the Phase 8 log
-entry below).
-**Next phase to start:** none currently planned. Candidates: Phase 10's
-remaining Game Mode milestones (Treasure, Dangerous Terrain, Enemy
-Avoidance, Multi-target, Limited Resources — see
-`phases/PHASE_10_GAME_MODE.md`'s Milestone Tracker), Chase Mode
-difficulty/scoring variants, or a separately-scoped future 2D-platformer/
-runner mode (raised as an idea, not yet architected — see Phase 11's log
-entry). Sorting, maze generators, and shareable-scenario URLs remain in
-`README.md`'s Future Roadmap.
+**Active phase:** Phase 11 (Chase Mode) — COMPLETE, plus a post-Phase-11
+addendum fixing a DFS-ghost stall and reworking movement to a fixed,
+fair, smoothly-interpolated speed (see that addendum's log entry below —
+both found via direct play-testing). This is the project's first
+genuinely interactive/playable mode (real-time keyboard control + live
+AI pursuit), distinct from every earlier mode's "watch a precomputed
+result animate" pattern. Phase 10 Milestone 1 (Escape) and Phase 9
+(Comparison Mode, with its three addenda) are both done before it. MVP
+(Phases 1-8) was already closed, with two explicitly-flagged exceptions
+(live deployment, recorded demo video — see the Phase 8 log entry below).
+**Next phase to start:** none currently planned. Candidates: a "single
+ghost/algorithm" Chase Mode option (explicitly requested, deferred),
+Phase 10's remaining Game Mode milestones (Treasure, Dangerous Terrain,
+Enemy Avoidance, Multi-target, Limited Resources — see
+`phases/PHASE_10_GAME_MODE.md`'s Milestone Tracker), or a separately-
+scoped future 2D-platformer/runner mode (raised as an idea, not yet
+architected). Sorting, maze generators, and shareable-scenario URLs
+remain in `README.md`'s Future Roadmap.
 **Blocking issues:** none for continued development. Two Phase 8 work items
 could not be completed inside this sandboxed environment (no network
 access to any static host; no screen-recording capability) — both are
@@ -1472,7 +1474,98 @@ log is the project's institutional memory.
   departure from this project's entire grid/`NodeId`-based world model
   that it would warrant its own architecture proposal (guideline §27),
   not an incremental addition to Chase Mode. Recorded here so it isn't
-  forgotten, not scoped or estimated yet.
+  forgotten, not scoped or estimated yet. A **future "single ghost/
+  algorithm" mode option** was also raised by the user (pick one
+  algorithm instead of always all four) — noted here as a real,
+  intentionally deferred future item, not started this pass.
+
+### Phase 11 Addendum — DFS Stall Fixed, Movement Speed Made Fair and Smooth
+- Status: COMPLETE. Both issues found via direct play-testing feedback
+  immediately after Phase 11 shipped: "the DFS ghost seems to just be
+  stuck in a loop in one place," and "I can spam buttons and outrun the
+  ghosts right now so a constant fixed smooth speed for all would be
+  better."
+- **Bug 1 — DFS ghost stalling in place.** Root cause: `computeGhostStep`
+  re-plans completely from scratch every 400ms tick (by design — see the
+  original Phase 11 entry above). DFS has no notion of "closer to the
+  goal," only a fixed exploration order, so a fresh DFS run from the
+  ghost's new position can easily produce a path whose first step walks
+  straight back onto the cell the ghost just left — and since the NEXT
+  tick re-plans from scratch again, this can repeat forever: a period-2
+  stall that looks exactly like "stuck in one place." Not a bug in
+  `dfs.ts` itself (its own correctness tests are unaffected and still
+  pass) — a consequence of how a real-time re-planning driver consumes
+  an already-valid path.
+  Fix: `computeGhostStep` (`src/game/chaseEngine.ts`) now takes an
+  optional `avoidPos` (the ghost's own position on the previous tick). If
+  the freshly computed first step would equal `avoidPos` AND the same
+  path has a further step available, it takes that second step instead.
+  `chaseStore.ts` now tracks each ghost's previous-tick positions and
+  passes them in. This does not change what any algorithm considers a
+  valid or optimal path — it only changes which step of an
+  already-computed valid path the real-time driver acts on for one tick,
+  and only when doing nothing would otherwise stall. Verified with two
+  new tests: a 3-cell corridor case confirming the skip-ahead behavior
+  fires correctly, and a 2-cell case confirming the safeguard never
+  blocks the ONLY available move (no infinite-avoidance deadlock).
+  Longer cycles (period-3+) are not specifically guarded against — flagged
+  as a known remaining limitation, not silently assumed solved.
+- **Bug 2 — spammable movement speed.** Root cause: the player moved
+  instantly on every `keydown` event, so speed was bounded by how fast
+  the user could physically press a key, not by any designed pace —
+  ghosts (fixed 400ms replan) had no way to keep up with keyboard
+  mashing.
+  Fix: movement is now driven by a fixed `PLAYER_MOVE_INTERVAL_MS` (160ms)
+  timer inside `chaseStore.ts`, not by raw keydown events. Keyboard
+  handlers now just record which direction is currently HELD
+  (`setDirectionHeld`/`clearDirectionHeld`, an ordered array so releasing
+  one of two simultaneously-held directions falls back to the other
+  rather than stopping dead) — the timer consumes whichever direction is
+  active on each tick. Speed is now constant and fair regardless of input
+  rate. 160ms (faster than the ghosts' 400ms) was a deliberate game-
+  balance choice, not an arbitrary pick — with FOUR ghosts converging on
+  one player, matching speeds exactly would make the chase close to
+  unwinnable; giving the player a speed edge keeps it fair. Adjustable if
+  playtesting says otherwise.
+- **Also added: smooth sub-cell motion**, since "constant fixed smooth
+  speed" asked for both fairness AND visual smoothness. `ChaseView.tsx`
+  now separates chaseStore's LOGICAL state (still discrete NodeIds,
+  ticking on fixed timers, unchanged) from a new per-frame RENDER state:
+  a persistent `requestAnimationFrame` loop interpolates each entity's
+  drawn pixel position between its last two logical cells over that same
+  tick duration, so the player and all four ghosts visibly glide between
+  cells instead of snapping. This is exactly ARCHITECTURE.md §1's
+  existing Render State layer concept ("interpolated/derived visual
+  data... read every animation frame"), applied to continuous motion for
+  the first time in this project rather than to fade/pulse effects —
+  not a new architectural pattern, a new use of an existing one.
+- Files modified: `src/game/chaseEngine.ts` (`avoidPos` parameter),
+  `src/state/chaseStore.ts` (previous-ghost-position tracking; held-
+  direction input model; new `playerTimer`; exported
+  `PLAYER_MOVE_INTERVAL_MS`), `src/components/game/ChaseView.tsx`
+  (rewritten render loop with sub-cell interpolation; keydown/keyup
+  instead of keydown-only), `tests/game/chaseEngine.test.ts` (2 new
+  anti-oscillation tests).
+- **Commands used to verify**: `npx tsc --noEmit` → 0 errors; `npx
+  vitest run` → 249/249 passing (247 previous + 2 new); `npm run build`
+  → succeeds (78 modules, unchanged — no new files this addendum, only
+  modifications).
+- What still needs a human in a real browser: whether 160ms/400ms is
+  actually a fun, fair pace (this is a game-feel judgment no automated
+  check can make); whether the anti-oscillation fix fully resolved the
+  DFS stall in practice or only reduced its frequency (period-3+ cycles
+  remain theoretically possible); whether the glide animation reads as
+  smooth at both 100×100 and 200×200 grid sizes.
+- Known limitations: no protection against longer oscillation cycles
+  (period-3+) — flagged, not fixed, since a general cycle-detection
+  system felt like more machinery than this stall actually warranted;
+  revisit if play-testing finds it still happens. Player speed (160ms)
+  and ghost speed (400ms) are hardcoded constants, not exposed as
+  difficulty settings yet — noted as a natural extension point for the
+  already-planned future "single ghost" mode and any future difficulty
+  work.
+
+---
 
 ## Open Questions For The Product Owner
 

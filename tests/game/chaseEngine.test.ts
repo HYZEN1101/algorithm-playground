@@ -49,6 +49,31 @@ describe("computeGhostStep", () => {
       expect(computeGhostStep(grid, ghostPos, playerPos, algorithm)).toBe(playerPos);
     }
   });
+
+  it("anti-oscillation: skips a step that would walk straight back onto avoidPos, taking the path's next step instead", () => {
+    const grid = new Grid(3, 1, TerrainType.Road); // a 3-cell corridor
+    const start = grid.idOf(0, 0);
+    const mid = grid.idOf(0, 1);
+    const end = grid.idOf(0, 2);
+
+    // Without avoidPos: the normal, single possible first step.
+    expect(computeGhostStep(grid, start, end, "bfs")).toBe(mid);
+
+    // With avoidPos equal to that normal first step (simulating "the
+    // ghost was just at `mid` last tick"), it skips ahead to the next
+    // step on the same path instead of stepping straight back onto it.
+    expect(computeGhostStep(grid, start, end, "bfs", mid)).toBe(end);
+  });
+
+  it("anti-oscillation falls back to the normal first step when no further step exists on the path", () => {
+    const grid = new Grid(2, 1, TerrainType.Road);
+    const start = grid.idOf(0, 0);
+    const end = grid.idOf(0, 1);
+    // Only one possible step, and avoidPos happens to equal it — but
+    // there's no path[2] to fall back to, so it's still taken (the
+    // safeguard never blocks the only available move).
+    expect(computeGhostStep(grid, start, end, "bfs", end)).toBe(end);
+  });
 });
 
 describe("computePlayerMove", () => {

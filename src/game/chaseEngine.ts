@@ -16,18 +16,41 @@ import { ALGORITHM_REGISTRY } from "../algorithms/pathfinding/registry";
  * cell (nothing to do — catch detection is the caller's job) or if no
  * path exists at all (fully walled off) — never throws, never picks an
  * arbitrary fallback move.
+ *
+ * `avoidPos`, if given, is the ghost's position on the PREVIOUS tick.
+ * Because every tick re-plans completely from scratch, an algorithm with
+ * no notion of "closer to the goal" (DFS especially — its path is a
+ * function of a fixed exploration order, not proximity) can easily
+ * produce a fresh path whose first step walks the ghost straight back
+ * onto the cell it just left, forever — a period-2 stall that looks like
+ * the ghost is "stuck," found via real play-testing. If the freshly
+ * computed first step equals `avoidPos` AND the same path has a further
+ * step available, this takes that second step instead. This does not
+ * change what any algorithm considers a valid/optimal path — it only
+ * changes which step of an already-valid path this real-time driver acts
+ * on for one tick, and only when doing nothing would otherwise stall.
  */
-export function computeGhostStep(grid: Grid, ghostPos: NodeId, playerPos: NodeId, algorithm: AlgorithmName): NodeId {
+export function computeGhostStep(
+  grid: Grid,
+  ghostPos: NodeId,
+  playerPos: NodeId,
+  algorithm: AlgorithmName,
+  avoidPos?: NodeId,
+): NodeId {
   if (ghostPos === playerPos) return ghostPos;
 
   const { run } = ALGORITHM_REGISTRY[algorithm];
   const result = run({ grid, start: ghostPos, goal: playerPos, diagonals: false });
 
-  if (result.pathFound && result.path.length > 1) {
-    return result.path[1];
+  if (!result.pathFound || result.path.length <= 1) return ghostPos;
+
+  const firstStep = result.path[1];
+
+  if (avoidPos !== undefined && firstStep === avoidPos && result.path.length > 2) {
+    return result.path[2];
   }
 
-  return ghostPos;
+  return firstStep;
 }
 
 export type Direction = "up" | "down" | "left" | "right";
